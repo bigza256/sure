@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Profile — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Profile</div>
+    <h1>My Profile</h1>
+    <p>Your account details and contribution summary.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+
+    <div class="grid grid-2" style="margin-bottom:18px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+          <div class="avatar" id="avatar" style="width:56px;height:56px;font-size:1.1rem">U</div>
+          <div>
+            <h3 style="margin:0" id="pName">—</h3>
+            <div style="color:var(--gray-600);font-size:.85rem" id="pEmail">—</div>
+            <div style="margin-top:6px"><span class="badge badge-active" id="pStatus">—</span></div>
+          </div>
+        </div>
+
+        <h4 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin:16px 0 6px">Contact details</h4>
+        <div class="detail-row"><span class="k">Phone</span><span class="v" id="pPhone">—</span></div>
+        <div class="detail-row"><span class="k">Email</span><span class="v" id="pEmail2">—</span></div>
+
+        <h4 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-600);margin:16px 0 6px">Account</h4>
+        <div class="detail-row"><span class="k">UID</span><span class="v" id="pUid" style="font-size:.78rem">—</span></div>
+        <div class="detail-row"><span class="k">Role</span><span class="v" id="pRole">—</span></div>
+        <div class="detail-row"><span class="k">Created</span><span class="v" id="pCreated">—</span></div>
+
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+          <a href="settings.html" class="btn btn-royal">Account Settings</a>
+          <button class="btn btn-outline" id="changePwd">Change Password</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-bottom:12px">Contribution summary</h3>
+          <div class="grid grid-2">
+            <div><div class="stat-label">Total Contributed</div><div class="stat-value money" id="pContrib">—</div></div>
+            <div><div class="stat-label">Contribution %</div><div class="stat-value" id="pPct">—</div></div>
+            <div><div class="stat-label">Reserve</div><div class="stat-value money" id="pReserve">—</div></div>
+            <div><div class="stat-label">Available</div><div class="stat-value money" id="pAvail">—</div></div>
+            <div><div class="stat-label">Total Distributed</div><div class="stat-value money money-pos" id="pDist">—</div></div>
+            <div><div class="stat-label">Total Withdrawn</div><div class="stat-value money" id="pWD">—</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom:12px">Recent activity</h3>
+          <div id="recentTx"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
+          <div style="text-align:center;margin-top:14px">
+            <a href="transactions.html" class="btn btn-sm btn-outline">View full ledger</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0">Danger zone</h3>
+          <div class="card-sub">These actions affect your session only. Financial records are retained.</div>
+        </div>
+        <button class="btn btn-danger" id="signOutAll">Sign Out</button>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast, initials,
+           formatUGX, formatDate, formatDateTime, statusBadge, emptyState, esc } from "./js/ui.js";
+  import { requireAuth, logoutUser, resetPassword } from "./js/auth.js";
+  import { watch, listBy, PATH, computePoolStats } from "./js/database.js";
+
+  const profile = await requireAuth("login.html");
+  renderHeader({ user:profile, isAdmin:profile.role === "admin" });
+  renderFooter();
+  renderBottomNav({ user:profile, isAdmin:profile.role === "admin" });
+
+  function paint(u){
+    $("#avatar").textContent = initials(u.name || "U");
+    $("#pName").textContent = u.name || "—";
+    $("#pEmail").textContent = u.email || "—";
+    $("#pEmail2").textContent = u.email || "—";
+    $("#pPhone").textContent = u.phone || "—";
+    $("#pUid").textContent = u.uid || "—";
+    $("#pRole").textContent = u.role || "user";
+    $("#pCreated").textContent = formatDate(u.createdAt);
+    const badge = u.status === "suspended" ? "badge-suspended" : "badge-active";
+    const el = $("#pStatus");
+    el.className = "badge " + badge;
+    el.textContent = u.status || "active";
+    $("#pContrib").textContent = formatUGX(u.totalDeposited||0);
+    $("#pReserve").textContent = formatUGX(u.reserveBalance||0);
+    $("#pAvail").textContent = formatUGX(u.balance||0);
+    $("#pDist").textContent = formatUGX(u.totalDistributed||0);
+    $("#pWD").textContent = formatUGX(u.totalWithdrawn||0);
+  }
+  paint(profile);
+
+  watch(`${PATH.users}/${profile.uid}`, (u)=>{
+    if(u) paint({ uid: profile.uid, ...u });
+  });
+
+  // Contribution %
+  computePoolStats().then(stats=>{
+    const me = stats.contributors.find(c=>c.uid === profile.uid);
+    $("#pPct").textContent = me ? (me.contributionPct*100).toFixed(1) + "%" : "0%";
+  }).catch(()=>{});
+
+  // Recent transactions
+  const txs = (await listBy(PATH.transactions, "uid", profile.uid))
+    .sort((a,b)=> (b.createdAt||0)-(a.createdAt||0)).slice(0,5);
+  if(txs.length){
+    $("#recentTx").innerHTML = txs.map(t=>`
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.85rem">${esc(t.type||"")}</div>
+          <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(t.createdAt)}</div>
+        </div>
+        <div class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}" style="font-size:.88rem">${formatUGX(t.amount||0)}</div>
+      </div>`).join("");
+  } else {
+    $("#recentTx").innerHTML = emptyState("🧾","No transactions yet");
+  }
+
+  // Actions
+  $("#signOutAll").onclick = ()=> logoutUser();
+  $("#changePwd").onclick = async ()=>{
+    try{
+      await resetPassword(profile.email);
+      toast("Password reset link sent to your email", "success");
+    }catch(err){
+      toast(err.message || "Could not send reset email", "error");
+    }
+  };
+</script>
+</body>
+</html>

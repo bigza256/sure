@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Community — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Community</div>
+    <h1>Match Discussions</h1>
+    <p>Each match has its own thread. Be respectful — spam is removed.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+    <div class="grid" style="grid-template-columns:1fr;gap:16px">
+
+      <div class="card">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="threadSelect">Select match thread</label>
+          <select class="form-control" id="threadSelect">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card" id="threadCard" style="display:none">
+        <div class="card-head">
+          <div>
+            <h3 id="threadTitle" style="margin:0">—</h3>
+            <div class="card-sub" id="threadMeta">—</div>
+          </div>
+          <span class="badge badge-pending" id="threadStatus">—</span>
+        </div>
+
+        <div id="threadLocked" class="alert alert-warn" style="display:none">
+          <span>🔒</span>
+          <div>This discussion has been locked by the administrator. New comments are disabled.</div>
+        </div>
+
+        <div id="commentError" class="alert alert-error" style="display:none"></div>
+
+        <div id="commentsList">
+          <div class="skeleton sk-line"></div>
+          <div class="skeleton sk-line w80"></div>
+        </div>
+
+        <div id="composer" style="margin-top:16px">
+          <div class="form-group">
+            <label class="form-label">Add a comment</label>
+            <textarea class="form-control" id="newComment" rows="3" placeholder="Share your view on this match…"></textarea>
+          </div>
+          <button class="btn btn-royal btn-block" id="postComment" type="button">Post Comment</button>
+        </div>
+      </div>
+
+      <div class="card" id="emptyCard">
+        <div class="empty">
+          <div class="empty-icon">💬</div>
+          <h4>No match threads yet</h4>
+          <p>Match discussions appear here once the administrator publishes bets.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
+           formatDate, timeAgo, esc, initials, emptyState, statusBadge } from "./js/ui.js";
+  import { whenAuthReady } from "./js/auth.js";
+  import { watch, pushItem, updateItem, listAll, PATH } from "./js/database.js";
+
+  const profile = await whenAuthReady();
+  renderHeader({ user:profile, isAdmin:profile?.role === "admin" });
+  renderFooter();
+  renderBottomNav({ user:profile, isAdmin:profile?.role === "admin" });
+
+  let bets = [];
+  let comments = [];
+  let currentThread = "";
+
+  function pickThread(id){
+    currentThread = id;
+    const b = bets.find(x => x.id === id);
+    const card = $("#threadCard"), empty = $("#emptyCard");
+    if(!b){ card.style.display="none"; empty.style.display="block"; return; }
+    card.style.display="block"; empty.style.display="none";
+    $("#threadTitle").textContent = b.match || "Match";
+    $("#threadMeta").textContent = `${b.competition||""} · ${formatDate(b.matchDate||b.createdAt)} · ${b.market||""} · Odds ${b.odds||"—"}`;
+    $("#threadStatus").outerHTML = statusBadge(b.result || b.status).replace("<span",'<span id="threadStatus"');
+    renderComments();
+  }
+
+  function renderThreadSelect(){
+    const sel = $("#threadSelect");
+    if(!bets.length){
+      sel.innerHTML = `<option value="">No match threads available</option>`;
+      $("#threadCard").style.display = "none";
+      $("#emptyCard").style.display = "block";
+      return;
+    }
+    sel.innerHTML = bets.map(b=>
+      `<option value="${b.id}">${esc(b.match||"—")} — ${esc(b.market||"")}</option>`).join("");
+    if(!currentThread) currentThread = bets[0].id;
+    sel.value = currentThread;
+    pickThread(currentThread);
+  }
+
+  function renderComments(){
+    const el = $("#commentsList");
+    const list = comments
+      .filter(c => c.threadId === currentThread && !c.hidden)
+      .sort((a,b)=> (a.createdAt||0)-(b.createdAt||0));
+
+    const locked = (window.__threadLocks && window.__threadLocks[currentThread]) || false;
+    $("#threadLocked").style.display = locked ? "flex" : "none";
+    $("#composer").style.display = locked ? "none" : "block";
+
+    if(!list.length){
+      el.innerHTML = emptyState("💬","No comments yet","Be the first to share a view.");
+      return;
+    }
+
+    el.innerHTML = list.map(c=>{
+      const isAdmin = c.role === "admin";
+      return `
+      <div class="comment" data-id="${c.id}">
+        <div class="avatar">${initials(c.userName||"U")}</div>
+        <div class="comment-body">
+          <div class="comment-head">
+            <span class="name">${esc(c.userName||"User")}</span>
+            ${isAdmin ? `<span class="admin-tag">ADMIN</span>` : ""}
+            <span class="time">${timeAgo(c.createdAt)}</span>
+          </div>
+          <div class="comment-text">${esc(c.text||"")}</div>
+          <div class="comment-actions">
+            <button data-act="reply" data-id="${c.id}">Reply</button>
+            <button data-act="like" data-id="${c.id}">👍 <span data-like="${c.id}">${(c.likes||0)}</span></button>
+            <button data-act="report" data-id="${c.id}">Report</button>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+
+    el.querySelectorAll("[data-act]").forEach(b => b.onclick = ()=> handleAction(b.dataset.act, b.dataset.id));
+  }
+
+  async function handleAction(act, id){
+    const c = comments.find(x => x.id === id);
+    if(!c) return;
+    if(act === "like"){
+      await updateItem(PATH.comments, id, { likes: (c.likes||0) + 1 });
+      toast("Liked", "success");
+    }
+    if(act === "report"){
+      await pushItem("reports", {
+        commentId: id, threadId: currentThread,
+        reportedBy: profile?.uid || null, createdAt: Date.now(), status: "OPEN"
+      });
+      toast("Reported to admin", "success");
+    }
+    if(act === "reply"){
+      if(!profile){ toast("Sign in to reply","warn"); return; }
+      const text = prompt("Reply:");
+      if(!text) return;
+      await pushItem(PATH.comments, {
+        threadId: currentThread,
+        uid: profile.uid, userName: profile.name, role: profile.role,
+        text: text.trim(), parentId: id, likes: 0, hidden: false,
+        createdAt: Date.now()
+      });
+      toast("Reply posted", "success");
+    }
+  }
+
+  $("#threadSelect").addEventListener("change", e => pickThread(e.target.value));
+
+  $("#postComment").addEventListener("click", async ()=>{
+    const err = $("#commentError");
+    err.style.display = "none";
+    if(!profile){ err.textContent = "Please sign in to comment."; err.style.display = "flex"; return; }
+    if(profile.status === "suspended"){ err.textContent = "Suspended accounts cannot comment."; err.style.display = "flex"; return; }
+    if(profile.canComment === false){ err.textContent = "Commenting privilege has been suspended."; err.style.display = "flex"; return; }
+    const text = $("#newComment").value.trim();
+    if(!text){ err.textContent = "Please write something first."; err.style.display = "flex"; return; }
+    if(text.length > 800){ err.textContent = "Comment is too long."; err.style.display = "flex"; return; }
+
+    $("#postComment").disabled = true;
+    try{
+      await pushItem(PATH.comments, {
+        threadId: currentThread,
+        uid: profile.uid, userName: profile.name, role: profile.role,
+        text, likes: 0, hidden: false, createdAt: Date.now()
+      });
+      $("#newComment").value = "";
+      toast("Comment posted", "success");
+    }catch(ex){
+      err.textContent = ex.message || "Could not post comment.";
+      err.style.display = "flex";
+    }finally{
+      $("#postComment").disabled = false;
+    }
+  });
+
+  // Watch bets -> thread select
+  watch(PATH.bets, (data)=>{
+    bets = data ? Object.entries(data).map(([id,v])=>({id, ...v})) : [];
+    renderThreadSelect();
+  });
+
+  // Watch comments
+  watch(PATH.comments, (data)=>{
+    comments = data ? Object.entries(data).map(([id,v])=>({id, ...v})) : [];
+    if(currentThread) renderComments();
+  });
+
+  // Watch thread locks
+  watch("threadLocks", (data)=>{
+    window.__threadLocks = data || {};
+    if(currentThread) renderComments();
+  });
+</script>
+</body>
+</html>

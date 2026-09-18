@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Create Account — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+<main class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo"><span class="logo" style="color:var(--navy-900)"><span class="logo-mark">S</span>SU<span style="color:var(--gold-dark)">RE</span></span></div>
+    <h1>Create your account</h1>
+    <p class="sub">Join SURE and start tracking your pool contribution.</p>
+
+    <div id="formError" class="alert alert-error" style="display:none"></div>
+
+    <form id="regForm" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="name">Full name</label>
+        <input class="form-control" id="name" autocomplete="name" required placeholder="e.g. John Okello">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="phone">Phone number</label>
+        <input class="form-control" id="phone" type="tel" autocomplete="tel" required placeholder="+256 7XX XXX XXX">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input class="form-control" id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-control" id="password" type="password" autocomplete="new-password" minlength="6" required placeholder="Min 6 characters">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirm">Confirm password</label>
+          <input class="form-control" id="confirm" type="password" autocomplete="new-password" minlength="6" required placeholder="Repeat password">
+        </div>
+      </div>
+
+      <label style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 18px;font-size:.85rem;color:var(--gray-600)">
+        <input type="checkbox" id="agree" style="margin-top:3px">
+        <span>I have read and agree to the <a href="terms.html">Terms</a> and <a href="risk-disclosure.html">Risk Disclosure</a>. I understand SURE does not guarantee profits.</span>
+      </label>
+
+      <button type="submit" class="btn btn-primary btn-block btn-lg" id="submitBtn">
+        Create Account
+      </button>
+    </form>
+
+    <div class="auth-foot">
+      Already have an account? <a href="login.html">Sign in</a>
+    </div>
+  </div>
+</main>
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, toast, $ } from "./js/ui.js";
+  import { whenAuthReady, registerUser } from "./js/auth.js";
+
+  // Signed-in users shouldn't see register
+  const existing = await whenAuthReady();
+  if(existing){ location.href = existing.role === "admin" ? "admin/index.html" : "dashboard.html"; }
+
+  renderHeader({});
+  renderFooter();
+  renderBottomNav({});
+
+  const form = $("#regForm");
+  const errBox = $("#formError");
+  const submit = $("#submitBtn");
+
+  function showError(msg){
+    errBox.textContent = msg;
+    errBox.style.display = "flex";
+  }
+  function hideError(){ errBox.style.display = "none"; }
+
+  form.addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    hideError();
+    const name = $("#name").value.trim();
+    const phone = $("#phone").value.trim();
+    const email = $("#email").value.trim();
+    const pass = $("#password").value;
+    const confirm = $("#confirm").value;
+
+    if(!name || name.length < 3) return showError("Please enter your full name.");
+    if(!/^[+\d][\d\s-]{6,}$/.test(phone)) return showError("Please enter a valid phone number.");
+    if(!/^\S+@\S+\.\S+$/.test(email)) return showError("Please enter a valid email.");
+    if(pass.length < 6) return showError("Password must be at least 6 characters.");
+    if(pass !== confirm) return showError("Passwords do not match.");
+    if(!$("#agree").checked) return showError("You must accept the Terms and Risk Disclosure.");
+
+    submit.disabled = true;
+    submit.innerHTML = `<span class="spinner"></span> Creating account…`;
+
+    try{
+      await registerUser({ name, phone, email, password: pass });
+      toast("Account created successfully", "success");
+      setTimeout(()=> location.href = "dashboard.html", 700);
+    }catch(err){
+      const map = {
+        "auth/email-already-in-use": "This email is already registered. Try signing in.",
+        "auth/weak-password": "Please choose a stronger password.",
+        "auth/invalid-email": "This email address is not valid.",
+        "auth/network-request-failed": "Network error. Check your connection and try again."
+      };
+      showError(map[err.code] || err.message || "Registration failed.");
+      submit.disabled = false;
+      submit.textContent = "Create Account";
+    }
+  });
+</script>
+</body>
+</html>

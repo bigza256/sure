@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Make a Contribution — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Contribution</div>
+    <h1>Make a Contribution</h1>
+    <p>Contributions are verified manually. Funds appear once approved.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+    <div class="risk-notice" style="margin-bottom:18px">
+      <span>⚠️</span>
+      <div>Only contribute money you can afford to lose. Sports betting involves significant risk.</div>
+    </div>
+
+    <div class="grid grid-2">
+      <!-- Form -->
+      <div class="card">
+        <h3 style="margin-bottom:6px">Contribution details</h3>
+        <p class="card-sub" style="margin-bottom:16px">Minimum UGX 50,000 · Maximum UGX 800,000</p>
+
+        <div id="formError" class="alert alert-error" style="display:none"></div>
+        <div id="formSuccess" class="alert alert-success" style="display:none"></div>
+
+        <form id="depForm" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="amount">Amount (UGX)</label>
+            <input class="form-control" id="amount" type="number" min="50000" max="800000" step="1000" required placeholder="e.g. 200000">
+            <div class="form-hint">You will receive manual verification from our team.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reference">Mobile Money transaction reference</label>
+            <input class="form-control" id="reference" required placeholder="e.g. MP240115.1234.A56789">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="paidAt">Date &amp; time of payment</label>
+            <input class="form-control" id="paidAt" type="datetime-local" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="screenshot">Payment screenshot (optional in demo)</label>
+            <input class="form-control" id="screenshot" type="file" accept="image/png,image/jpeg,image/jpg,image/webp">
+            <div class="form-hint">PNG/JPG/WEBP · Max 5 MB. Uploads do not auto-approve your deposit.</div>
+          </div>
+
+          <label style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 16px;font-size:.83rem;color:var(--gray-600)">
+            <input type="checkbox" id="attest" style="margin-top:3px">
+            <span>I confirm the reference and amount are accurate. I understand submissions are manually reviewed.</span>
+          </label>
+
+          <button class="btn btn-primary btn-block btn-lg" id="submitBtn">Submit Contribution</button>
+        </form>
+      </div>
+
+      <!-- Payment instructions -->
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-bottom:12px">Official payment instructions</h3>
+          <div id="payInstructions">
+            <div class="skeleton sk-line w80"></div>
+            <div class="skeleton sk-line w60"></div>
+            <div class="skeleton sk-line w40"></div>
+          </div>
+          <div class="risk-notice" style="margin-top:14px">
+            <span>ℹ️</span>
+            <div><strong>Demo mode:</strong> no real payments are processed. Contact details shown here are placeholders configured by the admin.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom:10px">My contributions</h3>
+          <div id="myDeposits"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, toast, $,
+           formatUGX, formatDateTime, statusBadge, emptyState, esc } from "./js/ui.js";
+  import { requireAuth } from "./js/auth.js";
+  import { listBy, pushItem, watch, PATH } from "./js/database.js";
+  import { sRef, uploadBytes, getDownloadURL, storage } from "./js/firebase.js";
+
+  const profile = await requireAuth("login.html");
+  renderHeader({ user: profile, isAdmin: profile.role === "admin" });
+  renderFooter();
+  renderBottomNav({ user: profile, isAdmin: profile.role === "admin" });
+
+  const errBox = $("#formError");
+  const okBox  = $("#formSuccess");
+  const showErr = m => { errBox.textContent = m; errBox.style.display = "flex"; okBox.style.display = "none"; };
+  const showOk  = m => { okBox.textContent = m;  okBox.style.display = "flex"; errBox.style.display = "none"; };
+
+  // Load payment instructions from settings (admin-controlled)
+  watch(`${PATH.settings}/payment`, (p)=>{
+    const el = $("#payInstructions");
+    if(!p){ el.innerHTML = `<p style="color:var(--gray-600);font-size:.88rem">Payment instructions have not been configured yet. Please contact support.</p>`; return; }
+    el.innerHTML = `
+      <div class="detail-row"><span class="k">Mobile Money name</span><span class="v">${esc(p.momoName||"—")}</span></div>
+      <div class="detail-row"><span class="k">Mobile Money number</span><span class="v">${esc(p.momoNumber||"—")}</span></div>
+      <div class="detail-row"><span class="k">WhatsApp</span><span class="v">${esc(p.whatsapp||"—")}</span></div>
+      <div class="detail-row"><span class="k">Email</span><span class="v">${esc(p.email||"—")}</span></div>`;
+  });
+
+  // My deposits
+  async function loadMyDeposits(){
+    const list = (await listBy(PATH.deposits, "uid", profile.uid))
+      .sort((a,b)=> (b.createdAt||0)-(a.createdAt||0));
+    const el = $("#myDeposits");
+    if(!list.length){ el.innerHTML = emptyState("💵","No contributions yet","Submit your first contribution above."); return; }
+    el.innerHTML = list.map(d=>`
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.9rem">${formatUGX(d.amount)}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${formatDateTime(d.createdAt)}</div>
+          <div style="font-size:.72rem;color:var(--gray-400)">Ref: ${esc(d.reference||"—")}</div>
+        </div>
+        <div>${statusBadge(d.status)}</div>
+      </div>`).join("");
+  }
+  loadMyDeposits();
+  watch(PATH.deposits, ()=>{ loadMyDeposits(); });
+
+  // Default datetime
+  const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  $("#paidAt").value = now.toISOString().slice(0,16);
+
+  // Submit
+  $("#depForm").addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    errBox.style.display = "none"; okBox.style.display = "none";
+
+    const amount = Number($("#amount").value);
+    const reference = $("#reference").value.trim();
+    const paidAt = $("#paidAt").value;
+    const file = $("#screenshot").files[0];
+
+    if(!amount || amount < 50000 || amount > 800000)
+      return showErr("Amount must be between UGX 50,000 and UGX 800,000.");
+    if(!reference) return showErr("Please enter the Mobile Money transaction reference.");
+    if(!paidAt) return showErr("Please provide the date & time of payment.");
+    if(!$("#attest").checked) return showErr("Please confirm the accuracy of your submission.");
+
+    const btn = $("#submitBtn");
+    btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Submitting…`;
+
+    try{
+      // Prevent obvious duplicate references for this user
+      const mine = await listBy(PATH.deposits, "uid", profile.uid);
+      if(mine.some(d => (d.reference||"").toLowerCase() === reference.toLowerCase())){
+        throw new Error("A deposit with this reference already exists.");
+      }
+
+      let screenshotUrl = null;
+      if(file){
+        if(file.size > 5*1024*1024) throw new Error("Screenshot exceeds 5 MB.");
+        const allowed = ["image/png","image/jpeg","image/jpg","image/webp"];
+        if(!allowed.includes(file.type)) throw new Error("Unsupported image type.");
+        const path = `deposit-screenshots/${profile.uid}/${Date.now()}_${file.name}`;
+        const snap = await uploadBytes(sRef(storage, path), file);
+        screenshotUrl = await getDownloadURL(snap.ref);
+      }
+
+      await pushItem(PATH.deposits, {
+        uid: profile.uid,
+        userName: profile.name,
+        userEmail: profile.email,
+        amount,
+        reference,
+        paidAt: new Date(paidAt).getTime(),
+        screenshotUrl,
+        status: "PENDING",
+        createdAt: Date.now(),
+        reviewedBy: null,
+        reviewedAt: null
+      });
+
+      showOk("Contribution submitted. It will be reviewed manually — screenshots do not auto-approve.");
+      toast("Contribution submitted", "success");
+      e.target.reset();
+      $("#paidAt").value = now.toISOString().slice(0,16);
+    }catch(err){
+      showErr(err.message || "Submission failed.");
+    }finally{
+      btn.disabled = false; btn.textContent = "Submit Contribution";
+    }
+  });
+</script>
+</body>
+</html>

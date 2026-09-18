@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>How It Works — SURE</title>
+<meta name="description" content="How SURE's pooled-betting tracking and account management works.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Learn</div>
+    <h1>How SURE Works</h1>
+    <p>From contribution to realized results — a clear, step-by-step explanation.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+
+    <div class="grid grid-2" style="margin-bottom:18px">
+      <div class="feature">
+        <div class="feature-icon">1</div>
+        <h3>Register &amp; contribute</h3>
+        <p>Create your account, then submit a contribution between <strong>UGX 50,000</strong> and
+        <strong>UGX 800,000</strong> with the Mobile Money transaction reference and a screenshot.
+        Deposits are <strong>manually reviewed</strong> — screenshots do not auto-approve them.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">2</div>
+        <h3>Your balance splits into two parts</h3>
+        <p>Once approved, your contribution becomes <strong>available balance</strong> (withdrawable
+        under the rules) or <strong>reserve / committed balance</strong> (funds committed to pool
+        betting activity, released only after settlement).</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">3</div>
+        <h3>Follow the pool</h3>
+        <p>The pool page shows total contributions, committed amounts, realized profit, realized
+        losses, and each participant's contribution percentage — calculated transparently from
+        recorded contributions.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">4</div>
+        <h3>Track every bet</h3>
+        <p>Pending bets show the match, competition, market, planned stake, and the <strong>odds
+        actually entered by the admin</strong>. When a bet closes, it moves to completed bets with
+        the realized result: <strong>WIN</strong>, <strong>LOSS</strong>, or <strong>VOID</strong>.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">5</div>
+        <h3>Realized results drive distributions</h3>
+        <p>Profit distributions are only recorded when there is actual realized profit from a bet.
+        There are no promised daily returns, no guaranteed final amounts, and no income projections.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">6</div>
+        <h3>30-day cycle settlement</h3>
+        <p>Each cycle runs for 30 days. At the end of the cycle, settlement is calculated from
+        actual pool performance and the published terms — never from a projected amount.</p>
+      </div>
+    </div>
+
+    <div class="card card-pad-lg" style="margin-bottom:18px">
+      <div class="eyebrow">A worked example</div>
+      <h2 style="margin-bottom:10px">What a bet looks like in practice</h2>
+      <p style="color:var(--gray-600);font-size:.9rem;margin-bottom:16px">
+        Below is a conceptual example. It illustrates the accounting mechanics — it does not imply
+        a guaranteed outcome. A bet can win <em>or</em> lose.
+      </p>
+      <div class="grid grid-2">
+        <div class="card" style="background:var(--green-bg);border-color:#bbf7d0">
+          <div class="stat-label" style="color:var(--green)">If the bet WINS</div>
+          <div class="detail-row"><span class="k">Stake</span><span class="v">UGX 50,000</span></div>
+          <div class="detail-row"><span class="k">Odds</span><span class="v">1.80</span></div>
+          <div class="detail-row"><span class="k">Return</span><span class="v">UGX 90,000</span></div>
+          <div class="detail-row"><span class="k">Gross profit</span><span class="v money-pos">UGX 40,000</span></div>
+          <div class="detail-row"><span class="k">Distribution (if permitted by rules)</span><span class="v">up to UGX 5,000</span></div>
+        </div>
+        <div class="card" style="background:var(--red-bg);border-color:#fecaca">
+          <div class="stat-label" style="color:var(--red)">If the bet LOSES</div>
+          <div class="detail-row"><span class="k">Stake</span><span class="v">UGX 50,000</span></div>
+          <div class="detail-row"><span class="k">Odds</span><span class="v">1.80</span></div>
+          <div class="detail-row"><span class="k">Return</span><span class="v">UGX 0</span></div>
+          <div class="detail-row"><span class="k">Stake loss</span><span class="v money-neg">UGX 50,000</span></div>
+          <div class="detail-row"><span class="k">Distribution</span><span class="v">UGX 0</span></div>
+        </div>
+      </div>
+      <div class="risk-notice" style="margin-top:14px">
+        <span>⚠️</span>
+        <div>Odds are not guarantees. This example is illustrative only. Real results depend on the
+        outcome of the match and the actual odds recorded by the admin.</div>
+      </div>
+    </div>
+
+    <div class="card card-pad-lg" style="margin-bottom:18px">
+      <h2 style="margin-bottom:12px">Balances, clearly separated</h2>
+      <div class="balance-split">
+        <div class="balance-block available">
+          <div class="stat-label">Available Balance</div>
+          <div class="stat-value money">UGX 0</div>
+          <div class="note">Not currently committed. Eligible for withdrawal under the published rules.</div>
+        </div>
+        <div class="balance-block reserve">
+          <div class="stat-label">Reserve / Committed</div>
+          <div class="stat-value money">UGX 0</div>
+          <div class="note">Committed to pool betting activity. Released only after cycle settlement.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-pad-lg">
+      <h2 style="margin-bottom:12px">The 30-day cycle</h2>
+      <div class="grid grid-4">
+        <div><div class="stat-label">Cycle start</div><div style="font-weight:700">Day 1</div></div>
+        <div><div class="stat-label">Cycle end</div><div style="font-weight:700">Day 30</div></div>
+        <div><div class="stat-label">Winning days</div><div style="font-weight:700">Recorded from results</div></div>
+        <div><div class="stat-label">Losing days</div><div style="font-weight:700">Recorded from results</div></div>
+      </div>
+      <p style="color:var(--gray-600);font-size:.9rem;margin-top:16px">
+        At the end of a cycle, settlement follows actual pool performance. There is no fixed final
+        amount promised, and no guaranteed distribution.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <a href="register.html" class="btn btn-primary">Create Account</a>
+        <a href="faq.html" class="btn btn-outline">Read FAQ</a>
+        <a href="risk-disclosure.html" class="btn btn-outline">Risk Disclosure</a>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav } from "./js/ui.js";
+  import { whenAuthReady } from "./js/auth.js";
+  const p = await whenAuthReady();
+  renderHeader({ user:p, isAdmin:p?.role === "admin" });
+  renderFooter();
+  renderBottomNav({ user:p, isAdmin:p?.role === "admin" });
+</script>
+</body>
+</html>
