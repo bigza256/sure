@@ -1,0 +1,279 @@
+// ============================================
+// SURE — shared UI helpers
+// ============================================
+export const $  = (s, r=document) => r.querySelector(s);
+export const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+
+// ---- Formatting ----
+export function formatUGX(n){
+  const v = Number(n || 0);
+  return "UGX " + v.toLocaleString("en-UG", { maximumFractionDigits: 0 });
+}
+export function formatNumber(n){
+  return Number(n || 0).toLocaleString("en-UG", { maximumFractionDigits: 2 });
+}
+export function formatDate(ts){
+  if(!ts) return "—";
+  const d = typeof ts === "number" ? new Date(ts) : new Date(ts);
+  if(isNaN(d)) return "—";
+  return d.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" });
+}
+export function formatDateTime(ts){
+  if(!ts) return "—";
+  const d = typeof ts === "number" ? new Date(ts) : new Date(ts);
+  if(isNaN(d)) return "—";
+  return d.toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+export function timeAgo(ts){
+  if(!ts) return "—";
+  const s = Math.floor((Date.now() - Number(ts)) / 1000);
+  if(s < 60) return "just now";
+  if(s < 3600) return Math.floor(s/60) + "m ago";
+  if(s < 86400) return Math.floor(s/3600) + "h ago";
+  if(s < 604800) return Math.floor(s/86400) + "d ago";
+  return formatDate(ts);
+}
+export function initials(name=""){
+  return name.trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase() || "U";
+}
+export function esc(s=""){
+  return String(s).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  })[c]);
+}
+export function statusBadge(status){
+  const s = String(status || "").toLowerCase();
+  const cls = ["pending","approved","rejected","win","loss","void","completed",
+               "processing","active","suspended"].includes(s) ? s : "void";
+  return `<span class="badge badge-${cls}">${esc(status||"—")}</span>`;
+}
+
+// ---- Toast ----
+let toastWrap;
+export function toast(msg, type="", ms=3200){
+  if(!toastWrap){
+    toastWrap = document.createElement("div");
+    toastWrap.className = "toast-wrap";
+    document.body.appendChild(toastWrap);
+  }
+  const el = document.createElement("div");
+  el.className = "toast " + type;
+  el.textContent = msg;
+  toastWrap.appendChild(el);
+  setTimeout(()=>{ el.style.opacity = "0"; el.style.transform="translateY(12px)"; el.style.transition=".2s"; }, ms-200);
+  setTimeout(()=> el.remove(), ms);
+}
+
+// ---- Modal ----
+export function openModal(html){
+  closeModal();
+  const ov = document.createElement("div");
+  ov.className = "modal-overlay";
+  ov.innerHTML = `<div class="modal">${html}</div>`;
+  ov.addEventListener("click", e => { if(e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+  requestAnimationFrame(()=> ov.classList.add("open"));
+  const close = ov.querySelector("[data-close]");
+  close && close.addEventListener("click", closeModal);
+  return ov;
+}
+export function closeModal(){
+  const ov = document.querySelector(".modal-overlay");
+  if(ov){ ov.classList.remove("open"); setTimeout(()=> ov.remove(), 250); }
+}
+export function confirmDialog({title="Confirm", message="", confirmText="Confirm", danger=false}){
+  return new Promise(resolve=>{
+    const ov = openModal(`
+      <div class="modal-head">
+        <h3>${esc(title)}</h3>
+        <button class="modal-close" data-close type="button">✕</button>
+      </div>
+      <p style="color:var(--gray-600);font-size:.92rem">${message}</p>
+      <div class="modal-actions">
+        <button class="btn btn-outline" data-no type="button">Cancel</button>
+        <button class="btn ${danger?"btn-danger":"btn-royal"}" data-yes type="button">${esc(confirmText)}</button>
+      </div>`);
+    ov.querySelector("[data-no]").onclick = () => { closeModal(); resolve(false); };
+    ov.querySelector("[data-yes]").onclick = () => { closeModal(); resolve(true); };
+  });
+}
+
+// ---- Skeleton / empty ----
+export function skeletonRows(n=3){
+  return Array.from({length:n}).map(()=>`
+    <div style="padding:14px 0;border-bottom:1px solid var(--gray-100)">
+      <div class="skeleton sk-line w60"></div>
+      <div class="skeleton sk-line w40"></div>
+    </div>`).join("");
+}
+export function emptyState(icon="📭", title="Nothing here yet", text=""){
+  return `<div class="empty"><div class="empty-icon">${icon}</div>
+    <h4>${esc(title)}</h4><p>${esc(text)}</p></div>`;
+}
+export function setLoading(el, show=true){
+  if(show) el.innerHTML = `<div class="loading-block"><div class="spinner dark"></div></div>`;
+}
+
+// ---- Header / nav rendering ----
+export const NAV = [
+  { href:"index.html",          label:"Home",        icon:"🏠" },
+  { href:"how-it-works.html",   label:"How It Works",icon:"⚙️" },
+  { href:"pool.html",           label:"Pool",        icon:"💧" },
+  { href:"bets.html",           label:"Bets",        icon:"🎯" },
+  { href:"comments.html",       label:"Community",   icon:"💬" },
+  { href:"faq.html",            label:"FAQ",         icon:"❓" }
+];
+export const USER_NAV = [
+  { href:"dashboard.html",   label:"Dashboard",  icon:"📊" },
+  { href:"pool.html",        label:"Pool",       icon:"💧" },
+  { href:"bets.html",        label:"Bets",       icon:"🎯" },
+  { href:"transactions.html",label:"Transactions",icon:"🧾" },
+  { href:"profile.html",     label:"Profile",    icon:"👤" }
+];
+export const ADMIN_NAV = [
+  { href:"/admin/index.html",        label:"Dashboard",   icon:"📊" },
+  { href:"/admin/users.html",        label:"Users",       icon:"👥" },
+  { href:"/admin/deposits.html",     label:"Deposits",    icon:"💵" },
+  { href:"/admin/withdrawals.html",  label:"Withdrawals", icon:"🏦" },
+  { href:"/admin/betting.html",      label:"Bet Manager", icon:"🎯" },
+  { href:"/admin/comments.html",     label:"Comments",    icon:"💬" },
+  { href:"/admin/settings.html",     label:"Settings",    icon:"⚙️" },
+  { href:"/admin/activity.html",     label:"Activity",    icon:"📜" }
+];
+
+function currentPath(){
+  const p = location.pathname.split("/").pop() || "index.html";
+  return p;
+}
+function inAdmin(){
+  return location.pathname.includes("/admin/");
+}
+
+export function renderHeader({ user=null, isAdmin=false } = {}){
+  const mount = document.getElementById("header");
+  if(!mount) return;
+  const items = isAdmin && inAdmin()
+    ? ADMIN_NAV
+    : (user ? USER_NAV : NAV);
+  const active = currentPath();
+
+  const desktopLinks = items.map(it=>{
+    const href = it.href.startsWith("/") && !inAdmin()
+      ? it.href.slice(1) : it.href;
+    const isActive = active === href.split("/").pop();
+    return `<a class="nav-link ${isActive?"active":""}" href="${href}">${it.label}</a>`;
+  }).join("");
+
+  mount.innerHTML = `
+    <header class="header">
+      <div class="container header-inner">
+        <a href="${inAdmin()?"../index.html":"index.html"}" class="logo">
+          <span class="logo-mark">S</span>SU<span>RE</span>
+        </a>
+        <nav class="desktop-nav">${desktopLinks}</nav>
+        <div class="header-actions desktop">
+          ${user
+            ? `<span class="badge badge-active" style="color:#fff;background:rgba(255,255,255,.1)">${esc(user.name||user.email||"User")}</span>
+               <a class="btn btn-sm btn-outline-light" href="${isAdmin?"../":""}dashboard.html">Dashboard</a>
+               <button class="btn btn-sm btn-primary" id="logoutBtn">Logout</button>`
+            : `<a class="nav-link" href="${isAdmin?"../":""}login.html">Login</a>
+               <a class="btn btn-sm btn-primary" href="${isAdmin?"../":""}register.html">Create Account</a>`}
+        </div>
+        <button class="hamburger" id="hamburger" aria-label="Menu"><span></span></button>
+      </div>
+    </header>
+
+    <div class="mobile-drawer" id="drawer">
+      <div class="drawer-panel">
+        <button class="drawer-close" id="drawerClose" aria-label="Close">✕</button>
+        <a href="${inAdmin()?"../index.html":"index.html"}" class="logo">
+          <span class="logo-mark">S</span>SU<span>RE</span>
+        </a>
+        ${items.map(it=>{
+          const href = it.href.startsWith("/") && !inAdmin() ? it.href.slice(1) : it.href;
+          const isActive = active === href.split("/").pop();
+          return `<a class="drawer-link ${isActive?"active":""}" href="${href}">
+            <span>${it.icon}</span>${it.label}</a>`;
+        }).join("")}
+        <div class="drawer-divider"></div>
+        ${user
+          ? `<a class="drawer-link" href="${isAdmin?"../":""}settings.html"><span>⚙️</span>Settings</a>
+             <button class="drawer-link" id="drawerLogout" style="text-align:left;width:100%"><span>🚪</span>Logout</button>`
+          : `<a class="drawer-link" href="${isAdmin?"../":""}login.html"><span>🔐</span>Login</a>
+             <a class="drawer-link" href="${isAdmin?"../":""}register.html"><span>✨</span>Create Account</a>`}
+        <div class="drawer-divider"></div>
+        <span class="badge badge-demo" style="align-self:flex-start">SIMULATED DATA</span>
+      </div>
+    </div>`;
+
+  const drawer = document.getElementById("drawer");
+  document.getElementById("hamburger").onclick = ()=> drawer.classList.add("open");
+  document.getElementById("drawerClose").onclick = ()=> drawer.classList.remove("open");
+  drawer.addEventListener("click", e => { if(e.target===drawer) drawer.classList.remove("open"); });
+
+  const logout = ()=> import("./auth.js").then(m => m.logoutUser());
+  document.getElementById("logoutBtn")   && (document.getElementById("logoutBtn").onclick = logout);
+  document.getElementById("drawerLogout")&& (document.getElementById("drawerLogout").onclick = logout);
+}
+
+export function renderFooter(){
+  const mount = document.getElementById("footer");
+  if(!mount) return;
+  const base = inAdmin() ? "../" : "";
+  mount.innerHTML = `
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div>
+            <a href="${base}index.html" class="logo"><span class="logo-mark">S</span>SU<span>RE</span></a>
+            <p style="font-size:.85rem;max-width:280px">${APP_TAGLINE}</p>
+            <span class="badge badge-demo" style="margin-top:10px">DEMO — SIMULATED DATA</span>
+          </div>
+          <div>
+            <h4>Platform</h4>
+            <a href="${base}how-it-works.html">How It Works</a>
+            <a href="${base}pool.html">Pool Transparency</a>
+            <a href="${base}bets.html">Betting Activity</a>
+            <a href="${base}plans.html">Plans</a>
+          </div>
+          <div>
+            <h4>Support</h4>
+            <a href="${base}faq.html">FAQ</a>
+            <a href="${base}contact.html">Contact</a>
+            <a href="${base}about.html">About</a>
+            <a href="${base}comments.html">Community</a>
+          </div>
+          <div>
+            <h4>Legal</h4>
+            <a href="${base}terms.html">Terms</a>
+            <a href="${base}risk-disclosure.html">Risk Disclosure</a>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          © ${new Date().getFullYear()} SURE. Track the Pool. Follow Every Bet.<br>
+          Sports betting involves significant risk. Past results do not guarantee future results.
+        </div>
+      </div>
+    </footer>`;
+}
+const APP_TAGLINE = "SURE — Track the Pool. Follow Every Bet.";
+
+export function renderBottomNav({ user=null, isAdmin=false } = {}){
+  const mount = document.getElementById("bottomNav");
+  if(!mount) return;
+  const items = (isAdmin && inAdmin()) ? ADMIN_NAV.slice(0,5)
+              : (user ? USER_NAV : [
+                  {href:"index.html", label:"Home", icon:"🏠"},
+                  {href:"how-it-works.html", label:"How", icon:"⚙️"},
+                  {href:"pool.html", label:"Pool", icon:"💧"},
+                  {href:"bets.html", label:"Bets", icon:"🎯"},
+                  {href:"login.html", label:"Login", icon:"🔐"}
+                ]);
+  const active = currentPath();
+  mount.innerHTML = `<nav class="bottom-nav">${items.map(it=>{
+    const href = it.href.startsWith("/") && !inAdmin() ? it.href.slice(1) : it.href;
+    const isActive = active === href.split("/").pop();
+    return `<a href="${href}" class="${isActive?"active":""}">
+      <span class="ic">${it.icon}</span>${it.label}</a>`;
+  }).join("")}</nav>`;
+}

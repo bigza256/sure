@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Dashboard — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Account</div>
+    <h1 id="greeting">Welcome</h1>
+    <p>Track your balance, bets, and pool activity.</p>
+    <div style="margin-top:10px"><span class="badge badge-demo">SIMULATED DATA</span></div>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+    <!-- Balance split -->
+    <div class="balance-split" style="margin-bottom:18px">
+      <div class="balance-block available">
+        <div class="stat-label">Available Balance</div>
+        <div class="stat-value money" id="balAvailable">—</div>
+        <div class="note">Eligible for withdrawal under the published rules.</div>
+      </div>
+      <div class="balance-block reserve">
+        <div class="stat-label">Reserve / Committed</div>
+        <div class="stat-value money" id="balReserve">—</div>
+        <div class="note">Committed to pool betting activity. Not immediately withdrawable.</div>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="grid grid-4" style="margin-bottom:22px">
+      <div class="stat-card">
+        <div class="stat-label">Total Deposited</div>
+        <div class="stat-value money" id="stDeposited">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Distributed</div>
+        <div class="stat-value money" id="stDistributed">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Withdrawn</div>
+        <div class="stat-value money" id="stWithdrawn">—</div>
+      </div>
+      <div class="stat-card royal">
+        <div class="stat-label">Current Cycle</div>
+        <div class="stat-value" id="stCycle" style="font-size:1rem">—</div>
+        <div class="stat-hint" id="stCycleHint">—</div>
+      </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="grid grid-4" style="margin-bottom:22px">
+      <a href="deposit.html" class="btn btn-primary btn-block">Make Contribution</a>
+      <a href="withdrawals.html" class="btn btn-outline btn-block">Request Withdrawal</a>
+      <a href="transactions.html" class="btn btn-outline btn-block">View Transactions</a>
+      <a href="my-bets.html" class="btn btn-outline btn-block">My Bets</a>
+    </div>
+
+    <!-- Recent transactions -->
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-head">
+        <div>
+          <h3 style="margin:0">Recent transactions</h3>
+          <div class="card-sub">Latest ledger entries for your account.</div>
+        </div>
+        <a href="transactions.html" class="btn btn-sm btn-ghost">View all</a>
+      </div>
+      <div class="responsive-table">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th><th>Balance after</th></tr></thead>
+            <tbody id="txBody"><tr><td colspan="5"><div class="skeleton sk-line"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="mobile-list" id="txMobile"></div>
+    </div>
+
+    <!-- Pending bets + latest completed -->
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head">
+          <h3 style="margin:0">Pending bets</h3>
+          <a href="bets.html" class="btn btn-sm btn-ghost">All</a>
+        </div>
+        <div id="pendingBets"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h3 style="margin:0">Latest completed</h3>
+          <a href="bets.html" class="btn btn-sm btn-ghost">All</a>
+        </div>
+        <div id="completedBets"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav,
+           formatUGX, formatDateTime, statusBadge, esc, emptyState, $ } from "./js/ui.js";
+  import { requireAuth } from "./js/auth.js";
+  import { listBy, listAll, watch, PATH, computePoolStats, cycleInfo } from "./js/database.js";
+
+  const profile = await requireAuth("login.html");
+  renderHeader({ user: profile, isAdmin: profile.role === "admin" });
+  renderFooter();
+  renderBottomNav({ user: profile, isAdmin: profile.role === "admin" });
+
+  $("#greeting").textContent = `Welcome, ${profile.name.split(" ")[0]}`;
+
+  const setText = (id, v)=>{ const el = document.getElementById(id); if(el) el.textContent = v; };
+  setText("balAvailable", formatUGX(profile.balance));
+  setText("balReserve", formatUGX(profile.reserveBalance));
+  setText("stDeposited", formatUGX(profile.totalDeposited));
+  setText("stDistributed", formatUGX(profile.totalDistributed));
+  setText("stWithdrawn", formatUGX(profile.totalWithdrawn));
+
+  // Live update user balance
+  watch(`${PATH.users}/${profile.uid}`, (u)=>{
+    if(!u) return;
+    setText("balAvailable", formatUGX(u.balance));
+    setText("balReserve", formatUGX(u.reserveBalance));
+    setText("stDeposited", formatUGX(u.totalDeposited));
+    setText("stDistributed", formatUGX(u.totalDistributed));
+    setText("stWithdrawn", formatUGX(u.totalWithdrawn));
+  });
+
+  // Cycle
+  try{
+    const cycles = await listAll(PATH.cycles);
+    const active = cycles.filter(c=>c.status === "active")
+      .sort((a,b)=>(b.startDate||0)-(a.startDate||0))[0];
+    if(active){
+      const info = cycleInfo(active);
+      setText("stCycle", `Day ${Math.max(1, info.daysCompleted)} / 30`);
+      setText("stCycleHint", `${info.daysLeft} days remaining`);
+    } else {
+      setText("stCycle", "No active cycle");
+      setText("stCycleHint", "Awaiting admin setup");
+    }
+  }catch(_){}
+
+  // Transactions
+  const txs = (await listBy(PATH.transactions, "uid", profile.uid))
+    .sort((a,b)=> (b.createdAt||0)-(a.createdAt||0))
+    .slice(0,6);
+
+  const txRow = t => `
+    <tr>
+      <td>${formatDateTime(t.createdAt)}</td>
+      <td><span class="badge badge-void">${esc(t.type||"—")}</span></td>
+      <td class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}">${formatUGX(t.amount||0)}</td>
+      <td style="color:var(--gray-600);font-size:.82rem">${esc(t.note||"—")}</td>
+      <td class="money">${t.balanceAfter!=null?formatUGX(t.balanceAfter):"—"}</td>
+    </tr>`;
+  const txCard = t => `
+    <div class="card" style="padding:14px">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px">
+        <span class="badge badge-void">${esc(t.type||"—")}</span>
+        <span class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}">${formatUGX(t.amount||0)}</span>
+      </div>
+      <div style="font-size:.8rem;color:var(--gray-600)">${esc(t.note||"")}</div>
+      <div style="font-size:.72rem;color:var(--gray-400);margin-top:4px">${formatDateTime(t.createdAt)}</div>
+    </div>`;
+
+  if(txs.length){
+    $("#txBody").innerHTML = txs.map(txRow).join("");
+    $("#txMobile").innerHTML = txs.map(txCard).join("");
+  } else {
+    $("#txBody").innerHTML = `<tr><td colspan="5">${emptyState("🧾","No transactions yet","Your ledger will appear here after your first contribution.")}</td></tr>`;
+    $("#txMobile").innerHTML = emptyState("🧾","No transactions yet","Your ledger will appear here after your first contribution.");
+  }
+
+  // Bets
+  try{
+    const all = await listAll(PATH.bets);
+    const pending = all.filter(b=>b.status==="pending").slice(0,4);
+    const completed = all.filter(b=>b.status==="completed")
+      .sort((a,b)=>(b.closedAt||0)-(a.closedAt||0)).slice(0,4);
+    const betRow = b => `
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.88rem">${esc(b.match||"—")}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${esc(b.market||"")} • Odds ${esc(String(b.odds||"—"))}</div>
+        </div>
+        <div style="text-align:right">
+          ${statusBadge(b.status)}
+          <div style="font-size:.75rem;color:var(--gray-400);margin-top:3px">${formatUGX(b.plannedStake||0)}</div>
+        </div>
+      </div>`;
+    const betDone = b => `
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.88rem">${esc(b.match||"—")}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">Odds ${esc(String(b.odds||"—"))} • Stake ${formatUGX(b.actualStake||0)}</div>
+        </div>
+        <div style="text-align:right">
+          ${statusBadge(b.result || b.status)}
+          <div class="money ${(b.profitLoss||0)>=0?"money-pos":"money-neg"}" style="font-size:.8rem;margin-top:3px">${formatUGX(b.profitLoss||0)}</div>
+        </div>
+      </div>`;
+    $("#pendingBets").innerHTML   = pending.length   ? pending.map(betRow).join("")   : emptyState("🎯","No pending bets","Check back soon.");
+    $("#completedBets").innerHTML = completed.length ? completed.map(betDone).join("") : emptyState("🏁","No completed bets","Results will appear here.");
+  }catch(_){}
+</script>
+</body>
+</html>

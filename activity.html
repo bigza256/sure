@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Activity Log — Admin — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Admin / Activity</div>
+    <h1>Activity Log</h1>
+    <p>Append-only record of every administrator action and value change.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="form-row">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Filter by action</label>
+          <select class="form-control" id="actFilter">
+            <option value="ALL">All actions</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Search note / target</label>
+          <input class="form-control" id="search" placeholder="Search…">
+        </div>
+      </div>
+    </div>
+
+    <div class="responsive-table">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>When</th><th>Admin</th><th>Action</th>
+              <th>Target</th><th>Previous</th><th>New</th><th>Note</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mobile-list" id="logMobile"></div>
+
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $,
+           formatDateTime, emptyState, esc } from "../js/ui.js";
+  import { requireAdmin } from "../js/auth.js";
+  import { watch, listAll, PATH } from "../js/database.js";
+
+  const admin = await requireAdmin();
+  renderHeader({ user:admin, isAdmin:true });
+  renderFooter();
+  renderBottomNav({ user:admin, isAdmin:true });
+
+  let logs = [];
+  let admins = {};
+  let actFilter = "ALL";
+  let query = "";
+
+  // Build uid -> name map
+  async function loadAdmins(){
+    const users = await listAll(PATH.users);
+    admins = {};
+    users.forEach(u => { admins[u.uid] = u.name || u.email || u.uid; });
+  }
+  await loadAdmins();
+
+  function fmtVal(v){
+    if(v === null || v === undefined) return "—";
+    if(typeof v === "object") return JSON.stringify(v).slice(0, 40);
+    return String(v).slice(0, 60);
+  }
+
+  function render(){
+    const sorted = logs.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    const filtered = sorted.filter(l => {
+      if(actFilter !== "ALL" && l.action !== actFilter) return false;
+      if(!query) return true;
+      const q = query.toLowerCase();
+      const hay = [(l.note||""), (l.target||""), (l.action||"")].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+
+    const body = $("#logBody");
+    const mob  = $("#logMobile");
+
+    if(!filtered.length){
+      body.innerHTML = `<tr><td colspan="7">${emptyState("📜","No activity yet","Admin actions will appear here.")}</td></tr>`;
+      mob.innerHTML  = emptyState("📜","No activity yet","Admin actions will appear here.");
+      return;
+    }
+
+    body.innerHTML = filtered.map(l => `
+      <tr>
+        <td style="white-space:nowrap">${formatDateTime(l.createdAt)}</td>
+        <td>${esc(admins[l.adminId] || l.adminId || "—")}</td>
+        <td><span class="badge badge-void">${esc(l.action || "")}</span></td>
+        <td style="font-size:.8rem">${esc((l.target || "—").slice(0,16))}</td>
+        <td style="font-size:.78rem;color:var(--gray-400)">${esc(fmtVal(l.previousValue))}</td>
+        <td style="font-size:.78rem;color:var(--gray-400)">${esc(fmtVal(l.newValue))}</td>
+        <td style="font-size:.8rem;color:var(--gray-600)">${esc(l.note || "")}</td>
+      </tr>`).join("");
+
+    mob.innerHTML = filtered.map(l => `
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span class="badge badge-void">${esc(l.action || "")}</span>
+          <span style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(l.createdAt)}</span>
+        </div>
+        <div style="font-size:.85rem;font-weight:600">${esc(admins[l.adminId] || l.adminId || "Admin")}</div>
+        <div style="font-size:.78rem;color:var(--gray-400);margin-top:2px">Target: ${esc(l.target || "—")}</div>
+        ${l.note ? `<div style="font-size:.85rem;color:var(--gray-600);margin-top:6px">${esc(l.note)}</div>` : ""}
+        ${l.previousValue !== undefined ? `<div class="detail-row" style="margin-top:8px"><span class="k">Previous</span><span class="v" style="font-size:.78rem">${esc(fmtVal(l.previousValue))}</span></div>` : ""}
+        ${l.newValue !== undefined ? `<div class="detail-row"><span class="k">New</span><span class="v" style="font-size:.78rem">${esc(fmtVal(l.newValue))}</span></div>` : ""}
+      </div>`).join("");
+  }
+
+  function refreshActionOptions(){
+    const actions = [...new Set(logs.map(l => l.action).filter(Boolean))].sort();
+    const sel = $("#actFilter");
+    const current = sel.value;
+    sel.innerHTML = `<option value="ALL">All actions</option>` +
+      actions.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
+    sel.value = actions.includes(current) ? current : "ALL";
+  }
+
+  $("#actFilter").addEventListener("change", e => { actFilter = e.target.value; render(); });
+  $("#search").addEventListener("input", e => { query = e.target.value.trim(); render(); });
+
+  watch(PATH.activityLogs, (data)=>{
+    logs = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    refreshActionOptions();
+    render();
+  });
+</script>
+</body>
+</html>

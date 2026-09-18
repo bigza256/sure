@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Login — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+<main class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo"><span class="logo" style="color:var(--navy-900)"><span class="logo-mark">S</span>SU<span style="color:var(--gold-dark)">RE</span></span></div>
+    <h1>Welcome back</h1>
+    <p class="sub">Sign in to track your pool and bets.</p>
+
+    <div id="formError" class="alert alert-error" style="display:none"></div>
+
+    <form id="loginForm" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="email">Email</label>
+        <input class="form-control" id="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input class="form-control" id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:18px">
+        <a href="forgot-password.html" style="font-size:.85rem">Forgot password?</a>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block btn-lg" id="submitBtn">Sign In</button>
+    </form>
+
+    <div class="auth-foot">
+      Don't have an account? <a href="register.html">Create one</a>
+    </div>
+  </div>
+</main>
+<div id="footer"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, toast, $ } from "./js/ui.js";
+  import { whenAuthReady, loginUser } from "./js/auth.js";
+
+  const existing = await whenAuthReady();
+  if(existing){ location.href = existing.role === "admin" ? "admin/index.html" : "dashboard.html"; }
+
+  renderHeader({});
+  renderFooter();
+
+  const url = new URLSearchParams(location.search);
+  if(url.get("suspended")){
+    const e = $("#formError"); e.textContent = "This account has been suspended. Contact support.";
+    e.style.display = "flex";
+  }
+
+  const form = $("#loginForm");
+  const errBox = $("#formError");
+  const submit = $("#submitBtn");
+  const showError = m => { errBox.textContent = m; errBox.style.display = "flex"; };
+  const hideError = ()=> errBox.style.display = "none";
+
+  form.addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    hideError();
+    const email = $("#email").value.trim();
+    const pass  = $("#password").value;
+    if(!email || !pass) return showError("Please enter your email and password.");
+
+    submit.disabled = true;
+    submit.innerHTML = `<span class="spinner"></span> Signing in…`;
+    try{
+      const profile = await loginUser(email, pass);
+      if(profile.status === "suspended"){
+        showError("This account has been suspended.");
+        submit.disabled = false; submit.textContent = "Sign In";
+        return;
+      }
+      toast("Welcome back", "success");
+      location.href = profile.role === "admin" ? "admin/index.html" : "dashboard.html";
+    }catch(err){
+      const map = {
+        "auth/invalid-credential": "Incorrect email or password.",
+        "auth/user-not-found": "No account found with that email.",
+        "auth/wrong-password": "Incorrect password.",
+        "auth/too-many-requests": "Too many attempts. Try again later."
+      };
+      showError(map[err.code] || err.message || "Login failed.");
+      submit.disabled = false;
+      submit.textContent = "Sign In";
+    }
+  });
+</script>
+</body>
+</html>
