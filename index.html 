@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>SURE — Track the Pool. Follow Every Bet.</title>
+<meta name="description" content="SURE is a transparent pooled-betting tracking and account-management platform.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <span class="hero-badge">◆ POOLED BETTING TRACKING</span>
+      <h1>SURE — <span>Track the Pool.</span><br>Follow Every Bet.</h1>
+      <p>Transparent pooled-betting tracking and account management. See the pool, follow every pending and completed bet, and manage your contribution records — all in one place.</p>
+      <div class="hero-actions">
+        <a href="register.html" class="btn btn-primary btn-lg">Create Account</a>
+        <a href="how-it-works.html" class="btn btn-outline-light btn-lg">Explore How It Works</a>
+      </div>
+
+      <div class="hero-stats" id="heroStats">
+        <div class="hero-stat"><div class="stat-label">Current Pool</div><div class="stat-value money" id="hsPool"><div class="skeleton sk-line" style="height:20px;margin:0"></div></div></div>
+        <div class="hero-stat"><div class="stat-label">Active Bets</div><div class="stat-value" id="hsActive">—</div></div>
+        <div class="hero-stat"><div class="stat-label">Completed Bets</div><div class="stat-value" id="hsCompleted">—</div></div>
+        <div class="hero-stat"><div class="stat-label">Current Cycle</div><div class="stat-value" id="hsCycle">—</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <div class="container">
+      <div class="risk-notice">
+        <span style="font-size:1.2rem">⚠️</span>
+        <div>
+          <strong>Risk Notice:</strong> Sports betting involves significant risk. Past results do not guarantee future results. SURE does not guarantee profits. Distributions depend on actual realized results and the applicable terms.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW SURE WORKS -->
+  <section class="section" id="how">
+    <div class="container">
+      <div class="section-title">
+        <div class="eyebrow">How it works</div>
+        <h2>Transparent pooling, honest accounting</h2>
+        <p>Every contribution, bet, and distribution is tracked in a ledger you can inspect.</p>
+      </div>
+      <div class="grid grid-3">
+        <div class="feature">
+          <div class="feature-icon">1</div>
+          <h3>Contribute</h3>
+          <p>Register and make a contribution between UGX 50,000 and UGX 800,000. Each contribution is recorded against your account.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">2</div>
+          <h3>Track the pool</h3>
+          <p>Watch the pool balance, active bets, and completed bets in real time. Your contribution percentage is calculated transparently.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">3</div>
+          <h3>Realized results</h3>
+          <p>Only actual recorded results drive distributions. No promised returns, no guaranteed daily income — every figure is a recorded outcome.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POOL TRANSPARENCY -->
+  <section class="section" style="background:#fff">
+    <div class="container">
+      <div class="section-title">
+        <div class="eyebrow">Pool transparency</div>
+        <h2>See exactly where the money stands</h2>
+      </div>
+      <div class="grid grid-4" id="poolGrid">
+        <div class="stat-card royal">
+          <div class="stat-label">Total Contributions</div>
+          <div class="stat-value money" id="poolContrib">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Currently Committed</div>
+          <div class="stat-value money" id="poolCommitted">—</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Realized Profit</div>
+          <div class="stat-value money money-pos" id="poolProfit">—</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">Realized Losses</div>
+          <div class="stat-value money money-neg" id="poolLoss">—</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:22px">
+        <a href="pool.html" class="btn btn-royal">View full pool breakdown</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- BETTING ACTIVITY -->
+  <section class="section">
+    <div class="container">
+      <div class="section-title">
+        <div class="eyebrow">Betting activity</div>
+        <h2>Every bet, tracked from pending to closed</h2>
+      </div>
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-head"><h3>Pending bets</h3><span class="badge badge-pending">Live</span></div>
+          <div id="homePending"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div><div class="skeleton sk-line w60"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Latest completed</h3><span class="badge badge-completed">Results</span></div>
+          <div id="homeCompleted"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div><div class="skeleton sk-line w60"></div></div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:22px">
+        <a href="bets.html" class="btn btn-royal">See all bets</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACCOUNT MANAGEMENT -->
+  <section class="section" style="background:#fff">
+    <div class="container">
+      <div class="section-title">
+        <div class="eyebrow">Account management</div>
+        <h2>Clear separation of your balances</h2>
+        <p>Available balance and reserve / committed balance are always shown separately. Reserve funds are not immediately withdrawable.</p>
+      </div>
+      <div class="grid grid-2">
+        <div class="feature">
+          <div class="feature-icon">💵</div>
+          <h3>Available balance</h3>
+          <p>Money not currently committed to an active bet and eligible for withdrawal under the published rules.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🔒</div>
+          <h3>Reserve / committed</h3>
+          <p>Funds committed to the pool's betting activity. They are only released after a cycle settles according to actual results.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMMUNITY -->
+  <section class="section">
+    <div class="container">
+      <div class="section-title">
+        <div class="eyebrow">Community</div>
+        <h2>Discuss matches, together</h2>
+      </div>
+      <div class="card">
+        <p style="color:var(--gray-600);margin-bottom:16px">Every match has its own discussion thread. Share views, reply, like, and report. Admins moderate and label their comments clearly.</p>
+        <a href="comments.html" class="btn btn-royal">Open discussions</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" style="background:#fff">
+    <div class="container">
+      <div class="section-title">
+        <div class="eyebrow">FAQ</div>
+        <h2>Common questions</h2>
+      </div>
+      <div class="grid grid-2">
+        <div class="feature"><h3>What is the minimum contribution?</h3><p>UGX 50,000. The maximum is UGX 800,000 per contribution.</p></div>
+        <div class="feature"><h3>Are returns guaranteed?</h3><p>No. Distributions depend entirely on actual realized betting results.</p></div>
+        <div class="feature"><h3>Can I see pending bets?</h3><p>Yes. Every pending bet is visible with its market, odds, and planned stake.</p></div>
+        <div class="feature"><h3>What is the reserve?</h3><p>Funds committed to betting activity. They are released only after cycle settlement under the terms.</p></div>
+      </div>
+      <div style="text-align:center;margin-top:22px">
+        <a href="faq.html" class="btn btn-outline">Read full FAQ</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav,
+           formatUGX, $, esc, statusBadge } from "./js/ui.js";
+  import { whenAuthReady } from "./js/auth.js";
+  import { computePoolStats, listAll, watch, PATH } from "./js/database.js";
+
+  // 1. Header / footer
+  const profile = await whenAuthReady();
+  renderHeader({ user: profile, isAdmin: profile?.role === "admin" });
+  renderFooter();
+  renderBottomNav({ user: profile, isAdmin: profile?.role === "admin" });
+
+  // 2. Hero stats from real database (fallback to 0)
+  try{
+    const stats = await computePoolStats();
+    const set = (id,v)=> { const el = document.getElementById(id); if(el) el.textContent = v; };
+    set("hsPool", formatUGX(stats.totalContrib));
+    set("hsActive", String(stats.activeBets));
+    set("hsCompleted", String(stats.completedBets));
+    set("poolContrib", formatUGX(stats.totalContrib));
+    set("poolCommitted", formatUGX(stats.committed));
+    set("poolProfit", formatUGX(stats.realizedProfit));
+    set("poolLoss", formatUGX(stats.realizedLoss));
+
+    // Current cycle
+    const cycle = await watch(PATH.cycles, async (c)=>{
+      const list = c ? Object.values(c) : [];
+      const active = list.sort((a,b)=> (b.startDate||0)-(a.startDate||0))[0];
+      if(!active){ set("hsCycle", "Not set"); return; }
+      const days = Math.min(30, Math.floor((Date.now()-(active.startDate||Date.now()))/86400000));
+      set("hsCycle", `Day ${Math.max(1,days)} / 30`);
+    });
+  }catch(err){ console.warn("Stats load skipped:", err); }
+
+  // 3. Bets snippets
+  try{
+    const bets = await listAll(PATH.bets);
+    const pending = bets.filter(b=>b.status==="pending").slice(0,3);
+    const completed = bets.filter(b=>b.status==="completed").sort((a,b)=>(b.closedAt||0)-(a.closedAt||0)).slice(0,3);
+    const pendingEl = document.getElementById("homePending");
+    const completedEl = document.getElementById("homeCompleted");
+    const row = b => `
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.88rem">${esc(b.match||"—")}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${esc(b.market||"")} • Odds ${esc(String(b.odds||"—"))}</div>
+        </div>
+        <div style="text-align:right">
+          ${statusBadge(b.status)}
+          <div style="font-size:.75rem;color:var(--gray-400);margin-top:3px">${formatUGX(b.plannedStake||0)}</div>
+        </div>
+      </div>`;
+    const rowDone = b => `
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.88rem">${esc(b.match||"—")}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${esc(b.market||"")} • Odds ${esc(String(b.odds||"—"))}</div>
+        </div>
+        <div style="text-align:right">
+          ${statusBadge(b.result || b.status)}
+          <div style="font-size:.75rem;font-weight:700;margin-top:3px" class="${(b.profitLoss||0)>=0?"money-pos":"money-neg"}">${formatUGX(b.profitLoss||0)}</div>
+        </div>
+      </div>`;
+    pendingEl.innerHTML = pending.length ? pending.map(row).join("") :
+      `<div class="empty" style="padding:16px"><p>No pending bets right now.</p></div>`;
+    completedEl.innerHTML = completed.length ? completed.map(rowDone).join("") :
+      `<div class="empty" style="padding:16px"><p>No completed bets yet.</p></div>`;
+  }catch(err){ console.warn("Bets load skipped:", err); }
+</script>
+</body>
+</html>
