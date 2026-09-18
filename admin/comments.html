@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Comments — Admin — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Admin / Comments</div>
+    <h1>Comment Moderation</h1>
+    <p>Hide, delete, lock threads, and suspend commenting privileges.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-v="all"      type="button">All</button>
+      <button class="tab"        data-v="visible"  type="button">Visible</button>
+      <button class="tab"        data-v="hidden"   type="button">Hidden</button>
+      <button class="tab"        data-v="reported" type="button">Reported</button>
+    </div>
+
+    <div id="list" class="grid" style="grid-template-columns:1fr;gap:12px">
+      <div class="card"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div></div>
+    </div>
+
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
+           timeAgo, initials, esc, emptyState, confirmDialog } from "../js/ui.js";
+  import { requireAdmin } from "../js/auth.js";
+  import { listAll, watch, updateItem, logActivity, PATH } from "../js/database.js";
+  import { db, ref, set } from "../js/firebase.js";
+
+  const admin = await requireAdmin();
+  renderHeader({ user:admin, isAdmin:true });
+  renderFooter();
+  renderBottomNav({ user:admin, isAdmin:true });
+
+  let comments = [];
+  let reports  = [];
+  let threads  = [];
+  let locks    = {};
+  let view     = "all";
+
+  function render(){
+    const el = $("#list");
+    let list = comments.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    if(view === "visible")  list = list.filter(c => !c.hidden);
+    if(view === "hidden")   list = list.filter(c => c.hidden);
+    if(view === "reported"){
+      const ids = new Set(reports.filter(r => r.status !== "CLOSED").map(r => r.commentId));
+      list = list.filter(c => ids.has(c.id));
+    }
+
+    if(!list.length){
+      el.innerHTML = `<div class="card">${emptyState("💬","No comments","Nothing matches this filter.")}</div>`;
+      return;
+    }
+
+    el.innerHTML = list.map(c => {
+      const thread = threads.find(t => t.id === c.threadId);
+      const reported = reports.some(r => r.commentId === c.id && r.status !== "CLOSED");
+      const isLocked = !!locks[c.threadId];
+      return `
+      <div class="card">
+        <div style="display:flex;gap:12px">
+          <div class="avatar">${initials(c.userName || "U")}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+              <strong style="font-size:.9rem">${esc(c.userName || "User")}</strong>
+              ${c.role === "admin" ? `<span class="admin-tag">ADMIN</span>` : ""}
+              ${c.hidden ? `<span class="badge badge-void">HIDDEN</span>` : ""}
+              ${reported ? `<span class="badge badge-rejected">REPORTED</span>` : ""}
+              ${isLocked ? `<span class="badge badge-pending">LOCKED</span>` : ""}
+              <span style="font-size:.72rem;color:var(--gray-400)">${timeAgo(c.createdAt)}</span>
+            </div>
+            <div style="font-size:.82rem;color:var(--gray-400);margin-bottom:6px">
+              Thread: ${esc(thread ? thread.match : c.threadId || "—")}
+            </div>
+            <div style="font-size:.9rem">${esc(c.text || "")}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="btn btn-sm btn-outline" data-toggle="${c.id}" type="button">${c.hidden ? "Unhide" : "Hide"}</button>
+              <button class="btn btn-sm btn-danger"  data-del="${c.id}" type="button">Delete</button>
+              <button class="btn btn-sm btn-ghost"   data-lock="${c.threadId}" type="button">${isLocked ? "Unlock thread" : "Lock thread"}</button>
+              <button class="btn btn-sm btn-ghost"   data-suspend="${c.uid}" type="button">Suspend commenting</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+
+    el.querySelectorAll("[data-toggle]").forEach(b => b.onclick = ()=> toggleHide(b.dataset.toggle));
+    el.querySelectorAll("[data-del]").forEach(b => b.onclick = ()=> delComment(b.dataset.del));
+    el.querySelectorAll("[data-lock]").forEach(b => b.onclick = ()=> lockThread(b.dataset.lock));
+    el.querySelectorAll("[data-suspend]").forEach(b => b.onclick = ()=> suspendCommenting(b.dataset.suspend));
+  }
+
+  async function toggleHide(id){
+    const c = comments.find(x => x.id === id);
+    if(!c) return;
+    await updateItem(PATH.comments, id, { hidden: !c.hidden });
+    await logActivity({
+      adminId: admin.uid,
+      action: c.hidden ? "COMMENT_UNHIDE" : "COMMENT_HIDE",
+      target: id, prev: c.hidden, next: !c.hidden
+    });
+    toast(c.hidden ? "Comment unhidden" : "Comment hidden", "success");
+  }
+
+  async function delComment(id){
+    const ok = await confirmDialog({
+      title: "Delete comment?",
+      message: "This permanently removes the comment.",
+      confirmText: "Delete", danger: true
+    });
+    if(!ok) return;
+    const c = comments.find(x => x.id === id);
+    await set(ref(db, `${PATH.comments}/${id}`), null);
+    await logActivity({
+      adminId: admin.uid, action: "COMMENT_DELETE", target: id,
+      prev: c ? c.text : null, next: null
+    });
+    toast("Comment deleted", "success");
+  }
+
+  async function lockThread(threadId){
+    if(!threadId) return;
+    const current = !!locks[threadId];
+    const ok = await confirmDialog({
+      title: current ? "Unlock thread?" : "Lock thread?",
+      message: current ? "Users will be able to comment again." : "New comments will be disabled for this thread.",
+      confirmText: current ? "Unlock" : "Lock"
+    });
+    if(!ok) return;
+    await set(ref(db, `threadLocks/${threadId}`), !current);
+    await logActivity({
+      adminId: admin.uid, action: "THREAD_LOCK_TOGGLE", target: threadId,
+      prev: current, next: !current
+    });
+    toast(current ? "Thread unlocked" : "Thread locked", "success");
+  }
+
+  async function suspendCommenting(uid){
+    if(!uid) return;
+    const users = await listAll(PATH.users);
+    const u = users.find(x => x.uid === uid);
+    const current = u?.canComment !== false;
+    const ok = await confirmDialog({
+      title: current ? "Suspend commenting?" : "Restore commenting?",
+      message: current ? "The user will not be able to post new comments." : "The user will be able to comment again.",
+      confirmText: current ? "Suspend" : "Restore",
+      danger: current
+    });
+    if(!ok) return;
+    await updateItem(PATH.users, uid, { canComment: !current });
+    await logActivity({
+      adminId: admin.uid, action: "COMMENT_PRIVILEGE_TOGGLE", target: uid,
+      prev: current, next: !current
+    });
+    toast("Commenting privilege updated", "success");
+  }
+
+  $("#tabs").addEventListener("click", e => {
+    const t = e.target.closest(".tab"); if(!t) return;
+    view = t.dataset.v;
+    $("#tabs").querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+    render();
+  });
+
+  watch(PATH.comments, (d)=>{
+    comments = d ? Object.entries(d).map(([id,v]) => ({ id, ...v })) : [];
+    render();
+  });
+  watch(PATH.bets, (d)=>{
+    threads = d ? Object.entries(d).map(([id,v]) => ({ id, ...v })) : [];
+    render();
+  });
+  watch("reports", (d)=>{
+    reports = d ? Object.entries(d).map(([id,v]) => ({ id, ...v })) : [];
+    render();
+  });
+  watch("threadLocks", (d)=>{
+    locks = d || {};
+    render();
+  });
+</script>
+</body>
+</html>

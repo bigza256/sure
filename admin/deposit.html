@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Deposits — Admin — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Admin / Deposits</div>
+    <h1>Deposit Management</h1>
+    <p>Review contributions. Approving updates the user's balance and writes a ledger entry.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-s="PENDING"  type="button">Pending</button>
+      <button class="tab"        data-s="APPROVED" type="button">Approved</button>
+      <button class="tab"        data-s="REJECTED" type="button">Rejected</button>
+      <button class="tab"        data-s="ALL"      type="button">All</button>
+    </div>
+
+    <div class="responsive-table">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th>User</th><th>Amount</th>
+              <th>Reference</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="depBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mobile-list" id="depMobile"></div>
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
+           formatUGX, formatDateTime, statusBadge, emptyState, esc,
+           confirmDialog } from "../js/ui.js";
+  import { requireAdmin } from "../js/auth.js";
+  import { listAll, watch, updateItem, adjustBalance, logActivity,
+           PATH } from "../js/database.js";
+
+  const admin = await requireAdmin();
+  renderHeader({ user:admin, isAdmin:true });
+  renderFooter();
+  renderBottomNav({ user:admin, isAdmin:true });
+
+  let filter = "PENDING";
+  let deposits = [];
+
+  function render(){
+    const sorted = deposits.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    const filtered = filter === "ALL" ? sorted : sorted.filter(d => d.status === filter);
+    const body = $("#depBody");
+    const mob  = $("#depMobile");
+
+    if(!filtered.length){
+      body.innerHTML = `<tr><td colspan="6">${emptyState("💵","No deposits","Nothing matches this filter.")}</td></tr>`;
+      mob.innerHTML  = emptyState("💵","No deposits","Nothing matches this filter.");
+      return;
+    }
+
+    body.innerHTML = filtered.map(d => `
+      <tr>
+        <td>${formatDateTime(d.createdAt)}</td>
+        <td>
+          ${esc(d.userName || "—")}
+          <div style="font-size:.75rem;color:var(--gray-400)">${esc(d.userEmail || "")}</div>
+        </td>
+        <td class="money">${formatUGX(d.amount)}</td>
+        <td style="font-size:.8rem">${esc(d.reference || "—")}</td>
+        <td>${statusBadge(d.status)}</td>
+        <td>
+          ${d.status === "PENDING"
+            ? `<button class="btn btn-sm btn-success" data-a="${d.id}" type="button">Approve</button>
+               <button class="btn btn-sm btn-danger"  data-r="${d.id}" type="button" style="margin-left:6px">Reject</button>`
+            : `<span style="font-size:.75rem;color:var(--gray-400)">${esc(d.reviewedBy || "—")}</span>`}
+        </td>
+      </tr>`).join("");
+
+    mob.innerHTML = filtered.map(d => `
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <strong>${formatUGX(d.amount)}</strong>
+          ${statusBadge(d.status)}
+        </div>
+        <div style="font-size:.82rem">${esc(d.userName || "—")}</div>
+        <div style="font-size:.75rem;color:var(--gray-400)">Ref ${esc(d.reference || "—")} · ${formatDateTime(d.createdAt)}</div>
+        ${d.status === "PENDING"
+          ? `<div style="display:flex;gap:8px;margin-top:12px">
+               <button class="btn btn-sm btn-success" data-a="${d.id}" type="button" style="flex:1">Approve</button>
+               <button class="btn btn-sm btn-danger"  data-r="${d.id}" type="button" style="flex:1">Reject</button>
+             </div>`
+          : ""}
+      </div>`).join("");
+
+    document.querySelectorAll("[data-a]").forEach(b => b.onclick = ()=> approve(b.dataset.a));
+    document.querySelectorAll("[data-r]").forEach(b => b.onclick = ()=> reject(b.dataset.r));
+  }
+
+  async function approve(id){
+    const d = deposits.find(x => x.id === id);
+    if(!d) return;
+    if(d.status !== "PENDING"){ toast("Already reviewed", "warn"); return; }
+
+    const ok = await confirmDialog({
+      title: "Approve deposit?",
+      message: `${formatUGX(d.amount)} will be credited to <strong>${esc(d.userName || d.userEmail)}</strong> and a ledger entry created.`,
+      confirmText: "Approve"
+    });
+    if(!ok) return;
+
+    try{
+      // Guard against duplicate approval
+      const fresh = (await listAll(PATH.deposits)).find(x => x.id === id);
+      if(!fresh || fresh.status !== "PENDING"){ toast("Already reviewed", "warn"); return; }
+
+      // Atomic: adjust balance + write ledger
+      await adjustBalance(d.uid, d.amount, {
+        type: "DEPOSIT",
+        reference: d.reference,
+        note: "Deposit approved",
+        createdBy: admin.uid
+      });
+
+      // Update user's running total
+      const users = await listAll(PATH.users);
+      const u = users.find(x => x.uid === d.uid);
+      await updateItem(PATH.users, d.uid, {
+        totalDeposited: (u?.totalDeposited || 0) + d.amount
+      });
+
+      await updateItem(PATH.deposits, id, {
+        status: "APPROVED",
+        reviewedBy: admin.uid,
+        reviewedAt: Date.now()
+      });
+
+      await logActivity({
+        adminId: admin.uid, action: "APPROVE_DEPOSIT", target: id,
+        prev: "PENDING", next: "APPROVED",
+        note: `${formatUGX(d.amount)} for ${d.userEmail}`
+      });
+
+      toast("Deposit approved", "success");
+    }catch(err){
+      toast(err.message || "Failed", "error");
+    }
+  }
+
+  async function reject(id){
+    const d = deposits.find(x => x.id === id);
+    const ok = await confirmDialog({
+      title: "Reject deposit?",
+      message: "The user will see the deposit as rejected. No balance change will be made.",
+      confirmText: "Reject", danger: true
+    });
+    if(!ok) return;
+
+    await updateItem(PATH.deposits, id, {
+      status: "REJECTED",
+      reviewedBy: admin.uid,
+      reviewedAt: Date.now()
+    });
+    await logActivity({
+      adminId: admin.uid, action: "REJECT_DEPOSIT", target: id,
+      prev: "PENDING", next: "REJECTED", note: d?.reference || ""
+    });
+    toast("Deposit rejected", "warn");
+  }
+
+  $("#tabs").addEventListener("click", e => {
+    const t = e.target.closest(".tab"); if(!t) return;
+    filter = t.dataset.s;
+    $("#tabs").querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+    render();
+  });
+
+  watch(PATH.deposits, (data)=>{
+    deposits = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    render();
+  });
+</script>
+</body>
+</html>
