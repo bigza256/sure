@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1430">
-<title>Ledger — SURE</title>
+<title>Transactions — SURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -13,20 +13,49 @@
 
 <section class="page-header">
   <div class="container">
-    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Ledger</div>
+    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Transactions</div>
     <h1>Transaction Ledger</h1>
-    <p>Every balance-changing event on your account.</p>
-    <div style="margin-top:12px"><button class="btn btn-sm btn-outline-light" id="exportBtn" type="button">Export CSV</button></div>
+    <p>Append-only record of every balance change on your account.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
-    <div class="tabs" id="tabs"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="form-row">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Type</label>
+          <select class="form-control" id="fType">
+            <option value="ALL">All types</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Wallet</label>
+          <select class="form-control" id="fWallet">
+            <option value="ALL">All wallets</option>
+            <option value="totalContribution">Total Contribution</option>
+            <option value="activeAllocation">Active Allocation</option>
+            <option value="protectedReserve">Protected Reserve</option>
+            <option value="availableEarnings">Available Earnings</option>
+            <option value="companyShare">Company Share</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-royal btn-sm" id="exportCsv" type="button">Export CSV</button>
+        <span style="font-size:.8rem;color:var(--gray-600);align-self:center" id="countLabel">—</span>
+      </div>
+    </div>
+
     <div class="responsive-table">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Type</th><th>Wallet</th><th>Amount</th><th>Before</th><th>After</th><th>Note</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Date</th><th>Type</th><th>Wallet</th><th>Amount</th>
+              <th>Before</th><th>After</th><th>Note</th>
+            </tr>
+          </thead>
           <tbody id="txBody"></tbody>
         </table>
       </div>
@@ -39,79 +68,107 @@
 <div id="bottomNav"></div>
 
 <script type="module">
-  import { renderHeader, renderFooter, renderBottomNav, $, formatUGX, formatDateTime,
-           emptyState, esc, toast } from "./js/ui.js";
-  import { requireAuth, currentIsAdmin } from "./js/auth.js";
-  import { listBy, PATH } from "./js/database.js";
+  import { renderHeader, renderFooter, renderBottomNav, $,
+           formatUGX, formatDateTime, emptyState, esc, toast } from "./js/ui.js";
+  import { requireAuth } from "./js/auth.js";
+  import { watch, PATH } from "./js/database.js";
 
   const profile = await requireAuth("login.html");
-  const isAdmin = currentIsAdmin();
-  renderHeader({ user: profile, isAdmin });
+  renderHeader({ user:profile, isAdmin:profile.role === "admin" });
   renderFooter();
-  renderBottomNav({ user: profile, isAdmin });
+  renderBottomNav({ user:profile, isAdmin:profile.role === "admin" });
 
-  const TYPES = ["ALL","CONTRIBUTION","ACTIVE_ALLOCATION","RESERVE_ADDITION",
-                 "BET_WIN","BET_LOSS","STAKE_RETURN","PROFIT_DISTRIBUTION",
-                 "COMPANY_SHARE","WITHDRAWAL","REFUND","ADJUSTMENT"];
-  let active = "ALL";
-  const all = (await listBy(PATH.transactions, "uid", profile.uid))
-    .sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
+  let all = [];
+  let fType = "ALL", fWallet = "ALL";
 
-  function renderTabs(){
-    $("#tabs").innerHTML = TYPES.map(t =>
-      `<button class="tab ${t === active ? "active" : ""}" data-t="${t}" type="button">${t.replace(/_/g," ")}</button>`
-    ).join("");
-    $("#tabs").querySelectorAll(".tab").forEach(b => b.onclick = ()=>{
-      active = b.dataset.t; renderTabs(); renderList();
-    });
+  function walletLabel(w){
+    return (w || "").replace(/([A-Z])/g," $1").replace(/^./, c=>c.toUpperCase()).trim();
   }
 
-  function renderList(){
-    const list = active === "ALL" ? all : all.filter(t => t.type === active);
+  function populateTypeFilter(){
+    const types = [...new Set(all.map(t => t.type).filter(Boolean))].sort();
+    const sel = $("#fType");
+    const cur = sel.value;
+    sel.innerHTML = `<option value="ALL">All types</option>` +
+      types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+    sel.value = types.includes(cur) ? cur : "ALL";
+  }
+
+  function filtered(){
+    return all
+      .filter(t => fType === "ALL" || t.type === fType)
+      .filter(t => fWallet === "ALL" || t.wallet === fWallet)
+      .sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+  }
+
+  function render(){
+    const list = filtered();
+    $("#countLabel").textContent = `${list.length} entries`;
+
     if(!list.length){
-      $("#txBody").innerHTML = `<tr><td colspan="7">${emptyState("🧾","No entries","Nothing matches this filter.")}</td></tr>`;
-      $("#txMobile").innerHTML = emptyState("🧾","No entries","Nothing matches this filter.");
+      $("#txBody").innerHTML = `<tr><td colspan="7">${emptyState("🧾","No transactions","Nothing matches this filter.")}</td></tr>`;
+      $("#txMobile").innerHTML = emptyState("🧾","No transactions","Nothing matches this filter.");
       return;
     }
+
     $("#txBody").innerHTML = list.map(t => `
       <tr>
         <td>${formatDateTime(t.timestamp)}</td>
-        <td><span class="badge badge-void">${esc(t.type)}</span></td>
-        <td>${esc(t.wallet || "—")}</td>
-        <td class="money ${(t.amount || 0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount)}</td>
-        <td class="money">${t.previousBalance != null ? formatUGX(t.previousBalance) : "—"}</td>
-        <td class="money">${t.newBalance != null ? formatUGX(t.newBalance) : "—"}</td>
-        <td style="font-size:.8rem;color:var(--gray-600)">${esc(t.note || "")}</td>
+        <td><span class="badge badge-void">${esc(t.type||"")}</span></td>
+        <td style="font-size:.8rem;color:var(--gray-600)">${esc(walletLabel(t.wallet))}</td>
+        <td class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}">${formatUGX(t.amount||0)}</td>
+        <td class="money" style="font-size:.8rem">${formatUGX(t.previousBalance||0)}</td>
+        <td class="money" style="font-size:.8rem">${formatUGX(t.newBalance||0)}</td>
+        <td style="font-size:.78rem;color:var(--gray-600)">${esc(t.note||"")}</td>
       </tr>`).join("");
+
     $("#txMobile").innerHTML = list.map(t => `
       <div class="card" style="padding:14px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span class="badge badge-void">${esc(t.type)}</span>
-          <span class="money ${(t.amount || 0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount)}</span>
+          <span class="badge badge-void">${esc(t.type||"")}</span>
+          <span class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}">${formatUGX(t.amount||0)}</span>
         </div>
-        <div style="font-size:.8rem;color:var(--gray-600)">${esc(t.wallet || "")} · ${esc(t.note || "")}</div>
-        <div style="font-size:.72rem;color:var(--gray-400);margin-top:4px">${formatDateTime(t.timestamp)} · After: ${t.newBalance != null ? formatUGX(t.newBalance) : "—"}</div>
+        <div style="font-size:.78rem;color:var(--gray-600)">${esc(walletLabel(t.wallet))}</div>
+        <div class="detail-row" style="margin-top:6px">
+          <span class="k">Before</span><span class="v" style="font-size:.8rem">${formatUGX(t.previousBalance||0)}</span>
+        </div>
+        <div class="detail-row">
+          <span class="k">After</span><span class="v" style="font-size:.8rem">${formatUGX(t.newBalance||0)}</span>
+        </div>
+        ${t.note ? `<div style="font-size:.75rem;color:var(--gray-400);margin-top:6px">${esc(t.note)}</div>` : ""}
+        <div style="font-size:.72rem;color:var(--gray-400);margin-top:6px">${formatDateTime(t.timestamp)}</div>
       </div>`).join("");
   }
 
-  $("#exportBtn").onclick = ()=>{
-    const rows = [["Date","Type","Wallet","Amount","PreviousBalance","NewBalance","Note","Reference"]];
-    all.forEach(t => rows.push([
-      new Date(t.timestamp || 0).toISOString(),
-      t.type || "", t.wallet || "", t.amount || 0,
-      t.previousBalance ?? "", t.newBalance ?? "",
-      t.note || "", t.referenceId || ""
-    ]));
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+  function exportCsv(){
+    const list = filtered();
+    if(!list.length){ toast("Nothing to export", "warn"); return; }
+    const headers = ["Timestamp","Date","Type","Wallet","Amount","Previous","After","Reference","Note","Status"];
+    const rows = list.map(t => [
+      t.timestamp, new Date(t.timestamp).toISOString(),
+      t.type, t.wallet, t.amount, t.previousBalance, t.newBalance,
+      t.referenceId||"", (t.note||"").replace(/[\r\n,]/g," "), t.status
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? "").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `sure-ledger-${profile.uid}-${Date.now()}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-    toast("Ledger exported", "success");
-  };
+    a.href = url; a.download = `sure-ledger-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast("CSV downloaded", "success");
+  }
 
-  renderTabs(); renderList();
+  $("#fType").addEventListener("change", e => { fType = e.target.value; render(); });
+  $("#fWallet").addEventListener("change", e => { fWallet = e.target.value; render(); });
+  $("#exportCsv").addEventListener("click", exportCsv);
+
+  watch(PATH.transactions, (data)=>{
+    const list = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    all = list.filter(t => t.uid === profile.uid);
+    populateTypeFilter();
+    render();
+  });
 </script>
 </body>
 </html>
