@@ -1,12 +1,10 @@
-here<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1430">
 <title>Admin Dashboard — SURE</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/style.css">
 </head>
@@ -17,60 +15,49 @@ here<!DOCTYPE html>
   <div class="container">
     <div class="breadcrumb">Admin</div>
     <h1>Admin Dashboard</h1>
-    <p>Operational overview — users, deposits, withdrawals, and pool state.</p>
-    <div style="margin-top:10px"><span class="badge badge-demo">SIMULATED DATA</span></div>
+    <p>Production overview — users, contributions, cycles, and flow.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
     <div class="grid grid-4" style="margin-bottom:14px">
-      <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="statUsers">—</div></div>
-      <div class="stat-card green"><div class="stat-label">Active Users</div><div class="stat-value" id="statActive">—</div></div>
-      <div class="stat-card"><div class="stat-label">Pending Deposits</div><div class="stat-value" id="statDepPend">—</div></div>
-      <div class="stat-card"><div class="stat-label">Pending Withdrawals</div><div class="stat-value" id="statWDPend">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="sUsers">—</div></div>
+      <div class="stat-card green"><div class="stat-label">Active Users</div><div class="stat-value" id="sActive">—</div></div>
+      <div class="stat-card"><div class="stat-label">Pending Deposits</div><div class="stat-value" id="sDepPend">—</div></div>
+      <div class="stat-card"><div class="stat-label">Pending Withdrawals</div><div class="stat-value" id="sWDPend">—</div></div>
     </div>
-
+    <div class="grid grid-4" style="margin-bottom:14px">
+      <div class="stat-card royal"><div class="stat-label">Total Contributions</div><div class="stat-value money" id="sContrib">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Protected Reserves</div><div class="stat-value money" id="sReserve">—</div></div>
+      <div class="stat-card green"><div class="stat-label">Total Available Earnings</div><div class="stat-value money" id="sEarnings">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Company Share</div><div class="stat-value money" id="sCompany">—</div></div>
+    </div>
     <div class="grid grid-4" style="margin-bottom:22px">
-      <div class="stat-card royal"><div class="stat-label">Total Contributions</div><div class="stat-value money" id="statContrib">—</div></div>
-      <div class="stat-card"><div class="stat-label">Current Reserve</div><div class="stat-value money" id="statReserve">—</div></div>
-      <div class="stat-card"><div class="stat-label">Active Bets</div><div class="stat-value" id="statBetsActive">—</div></div>
-      <div class="stat-card"><div class="stat-label">Wins / Losses</div><div class="stat-value" id="statWinLoss">—</div></div>
+      <div class="stat-card"><div class="stat-label">Active Cycles</div><div class="stat-value" id="sCycActive">—</div></div>
+      <div class="stat-card"><div class="stat-label">Wins</div><div class="stat-value money-pos" id="sWins">—</div></div>
+      <div class="stat-card"><div class="stat-label">Losses</div><div class="stat-value money-neg" id="sLosses">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Withdrawn</div><div class="stat-value money" id="sWithdrawn">—</div></div>
     </div>
 
-    <div class="grid grid-2" style="margin-bottom:18px">
+    <div class="grid grid-2">
       <div class="card">
-        <div class="card-head">
-          <h3 style="margin:0">Recent deposits</h3>
-          <a class="btn btn-sm btn-ghost" href="deposits.html">Manage</a>
-        </div>
-        <div id="recentDeposits">
-          <div class="skeleton sk-line"></div>
-          <div class="skeleton sk-line w60"></div>
-        </div>
+        <div class="card-head"><h3 style="margin:0">Recent deposits</h3><a class="btn btn-sm btn-ghost" href="deposits.html">Manage</a></div>
+        <div id="recentDeposits"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
       </div>
-
       <div class="card">
-        <div class="card-head">
-          <h3 style="margin:0">Recent withdrawals</h3>
-          <a class="btn btn-sm btn-ghost" href="withdrawals.html">Manage</a>
-        </div>
-        <div id="recentWithdrawals">
-          <div class="skeleton sk-line"></div>
-          <div class="skeleton sk-line w60"></div>
-        </div>
+        <div class="card-head"><h3 style="margin:0">Recent withdrawals</h3><a class="btn btn-sm btn-ghost" href="withdrawals.html">Manage</a></div>
+        <div id="recentWithdrawals"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-head">
-        <h3 style="margin:0">Quick actions</h3>
-      </div>
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin-bottom:12px">Quick actions</h3>
       <div class="grid grid-4">
-        <a class="btn btn-primary btn-block" href="betting.html">Create a bet</a>
-        <a class="btn btn-outline btn-block" href="deposits.html">Review deposits</a>
+        <a class="btn btn-primary btn-block" href="deposits.html">Review deposits</a>
         <a class="btn btn-outline btn-block" href="withdrawals.html">Review withdrawals</a>
-        <a class="btn btn-outline btn-block" href="activity.html">Activity log</a>
+        <a class="btn btn-outline btn-block" href="betting.html">Record allocation</a>
+        <a class="btn btn-outline btn-block" href="settings.html">System config</a>
       </div>
     </div>
   </div>
@@ -80,63 +67,77 @@ here<!DOCTYPE html>
 <div id="bottomNav"></div>
 
 <script type="module">
-  import { renderHeader, renderFooter, renderBottomNav, $,
-           formatUGX, formatDateTime, statusBadge, emptyState, esc } from "../js/ui.js";
+  import { renderHeader, renderFooter, renderBottomNav, $, formatUGX,
+           formatDateTime, statusBadge, emptyState, esc } from "../js/ui.js";
   import { requireAdmin } from "../js/auth.js";
-  import { listAll, watch, PATH, computePoolStats } from "../js/database.js";
+  import { listAll, watch, PATH } from "../js/database.js";
 
   const admin = await requireAdmin();
-  renderHeader({ user:admin, isAdmin:true });
+  renderHeader({ user: admin, isAdmin: true });
   renderFooter();
-  renderBottomNav({ user:admin, isAdmin:true });
+  renderBottomNav({ user: admin, isAdmin: true });
 
   const set = (id, v)=>{ const el = document.getElementById(id); if(el) el.textContent = v; };
 
   async function refresh(){
-    const [users, deposits, withdrawals, bets, stats] = await Promise.all([
-      listAll(PATH.users), listAll(PATH.deposits),
-      listAll(PATH.withdrawals), listAll(PATH.bets),
-      computePoolStats()
+    const [users, deposits, withdrawals, cycles] = await Promise.all([
+      listAll(PATH.users),
+      listAll(PATH.depositSubmissions),
+      listAll(PATH.withdrawals),
+      listAll(PATH.cycles)
     ]);
 
-    set("statUsers",   users.length);
-    set("statActive",  users.filter(u => u.status !== "suspended").length);
-    set("statDepPend", deposits.filter(d => d.status === "PENDING").length);
-    set("statWDPend",  withdrawals.filter(w => w.status === "PENDING").length);
-    set("statContrib", formatUGX(stats.totalContrib));
-    set("statReserve", formatUGX(stats.totalReserve));
-    set("statBetsActive", bets.filter(b => b.status === "pending").length);
-    set("statWinLoss",
-      `${bets.filter(b => b.result === "WIN").length} / ${bets.filter(b => b.result === "LOSS").length}`);
+    let totals = { contrib: 0, reserve: 0, earnings: 0, company: 0, withdrawn: 0, wins: 0, losses: 0 };
+    users.forEach(u => {
+      const w = u.wallets || {};
+      totals.contrib   += w.totalContribution || 0;
+      totals.reserve   += w.protectedReserve || 0;
+      totals.earnings  += w.availableEarnings || 0;
+      totals.company   += w.companyShareContributed || 0;
+      totals.withdrawn += w.totalWithdrawn || 0;
+    });
+    cycles.forEach(c => {
+      totals.wins += c.totalWins || 0;
+      totals.losses += c.totalLosses || 0;
+    });
+
+    set("sUsers", users.length);
+    set("sActive", users.filter(u => u.status !== "suspended").length);
+    set("sDepPend", deposits.filter(d => d.status === "PENDING").length);
+    set("sWDPend", withdrawals.filter(w => w.status === "REQUESTED").length);
+    set("sContrib", formatUGX(totals.contrib));
+    set("sReserve", formatUGX(totals.reserve));
+    set("sEarnings", formatUGX(totals.earnings));
+    set("sCompany", formatUGX(totals.company));
+    set("sCycActive", cycles.filter(c => c.status === "ACTIVE").length);
+    set("sWins", formatUGX(totals.wins));
+    set("sLosses", formatUGX(totals.losses));
+    set("sWithdrawn", formatUGX(totals.withdrawn));
 
     const miniRow = x => `
       <div class="detail-row">
         <div>
           <div style="font-weight:600;font-size:.88rem">${formatUGX(x.amount)}</div>
           <div style="font-size:.75rem;color:var(--gray-400)">${esc(x.userName || x.userEmail || x.uid)}</div>
-          <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(x.createdAt)}</div>
+          <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(x.submittedAt || x.requestedAt)}</div>
         </div>
         <div>${statusBadge(x.status)}</div>
       </div>`;
 
-    const rd = deposits.sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0,5);
-    const rw = withdrawals.sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0,5);
+    const rd = deposits.sort((a,b) => (b.submittedAt || 0) - (a.submittedAt || 0)).slice(0, 5);
+    const rw = withdrawals.sort((a,b) => (b.requestedAt || 0) - (a.requestedAt || 0)).slice(0, 5);
 
-    $("#recentDeposits").innerHTML = rd.length
-      ? rd.map(miniRow).join("")
-      : emptyState("💵", "No deposits yet", "New submissions will appear here.");
-    $("#recentWithdrawals").innerHTML = rw.length
-      ? rw.map(miniRow).join("")
-      : emptyState("🏦", "No withdrawals yet", "New requests will appear here.");
+    $("#recentDeposits").innerHTML = rd.length ? rd.map(miniRow).join("")
+      : emptyState("💵","No deposits yet","Submissions will appear here.");
+    $("#recentWithdrawals").innerHTML = rw.length ? rw.map(miniRow).join("")
+      : emptyState("🏦","No withdrawals yet","Requests will appear here.");
   }
 
   await refresh();
-
-  // Live updates
-  watch(PATH.deposits,    ()=> refresh());
-  watch(PATH.withdrawals, ()=> refresh());
-  watch(PATH.bets,        ()=> refresh());
-  watch(PATH.users,       ()=> refresh());
+  watch(PATH.users, () => refresh());
+  watch(PATH.depositSubmissions, () => refresh());
+  watch(PATH.withdrawals, () => refresh());
+  watch(PATH.cycles, () => refresh());
 </script>
 </body>
 </html>
