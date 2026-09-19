@@ -15,15 +15,16 @@
   <div class="container">
     <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Withdrawals</div>
     <h1>Request a Withdrawal</h1>
-    <p>Withdrawals are processed manually according to the published rules.</p>
+    <p>Withdraw from Available Earnings. Reserve funds are released at cycle settlement.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
     <div class="grid grid-2">
+
       <div class="card">
-        <h3 style="margin-bottom:6px">New withdrawal request</h3>
+        <h3 style="margin-bottom:6px">New request</h3>
         <p class="card-sub" style="margin-bottom:16px">
           Available to withdraw: <strong id="availText">—</strong>
         </p>
@@ -33,29 +34,31 @@
 
         <form id="wForm" novalidate>
           <div class="form-group">
-            <label class="form-label" for="amount">Amount (UGX)</label>
-            <input class="form-control" id="amount" type="number" min="1" step="1000" required placeholder="e.g. 100000">
+            <label class="form-label">Amount (UGX)</label>
+            <input class="form-control" id="amount" type="number" min="1" step="1000" required placeholder="e.g. 50000">
+            <div class="form-hint" id="minHint">Minimum —</div>
           </div>
           <div class="form-group">
-            <label class="form-label" for="momo">Mobile Money number</label>
+            <label class="form-label">Mobile Money number</label>
             <input class="form-control" id="momo" required placeholder="+256 7XX XXX XXX">
           </div>
           <div class="form-group">
-            <label class="form-label" for="accName">Account name</label>
+            <label class="form-label">Account name</label>
             <input class="form-control" id="accName" required placeholder="Name on the Mobile Money account">
           </div>
           <div class="form-group">
-            <label class="form-label" for="note">Note (optional)</label>
-            <textarea class="form-control" id="note" rows="3" placeholder="Any additional information"></textarea>
+            <label class="form-label">Note (optional)</label>
+            <textarea class="form-control" id="note" rows="3"></textarea>
           </div>
-          <button class="btn btn-primary btn-block btn-lg" id="submitBtn">Submit Request</button>
+          <button class="btn btn-primary btn-block btn-lg" id="submitBtn" type="submit">Request Withdrawal</button>
         </form>
       </div>
 
       <div class="card">
-        <h3 style="margin-bottom:12px">My withdrawal requests</h3>
+        <h3 style="margin-bottom:12px">My requests</h3>
         <div id="myList"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
       </div>
+
     </div>
   </div>
 </main>
@@ -64,50 +67,53 @@
 <div id="bottomNav"></div>
 
 <script type="module">
-  import { renderHeader, renderFooter, renderBottomNav, toast, $,
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
            formatUGX, formatDateTime, statusBadge, emptyState, esc } from "./js/ui.js";
-  import { requireAuth } from "./js/auth.js";
+  import { requireAuth, currentIsAdmin } from "./js/auth.js";
+  import { loadSystemConfig } from "./js/config.js";
   import { listBy, pushItem, watch, PATH } from "./js/database.js";
 
   const profile = await requireAuth("login.html");
-  renderHeader({ user: profile, isAdmin: profile.role === "admin" });
+  const isAdmin = currentIsAdmin();
+  renderHeader({ user: profile, isAdmin });
   renderFooter();
-  renderBottomNav({ user: profile, isAdmin: profile.role === "admin" });
+  renderBottomNav({ user: profile, isAdmin });
 
-  let balance = profile.balance || 0;
-  const availText = $("#availText");
-  const updateAvail = ()=> availText.textContent = formatUGX(balance);
+  const config = await loadSystemConfig();
+
+  let available = (profile.wallets || {}).availableEarnings || 0;
+  const updateAvail = ()=> {
+    $("#availText").textContent = formatUGX(available);
+    $("#minHint").textContent = `Minimum ${formatUGX(config.minWithdrawal)}`;
+  };
   updateAvail();
 
-  // Live balance
-  watch(`${PATH.users}/${profile.uid}`, (u)=>{
-    balance = (u && u.balance) || 0;
+  watch(`${PATH.users}/${profile.uid}/wallets`, (w)=>{
+    available = (w && w.availableEarnings) || 0;
     updateAvail();
   });
+
+  // Disable new request if one is open
+  let hasOpen = false;
+  async function refreshOpenState(){
+    const mine = await listBy(PATH.withdrawals, "uid", profile.uid);
+    hasOpen = mine.some(w => ["REQUESTED","PENDING","APPROVED","PROCESSING"].includes(w.status));
+    if(hasOpen){
+      $("#submitBtn").disabled = true;
+      $("#submitBtn").textContent = "Withdrawal already in progress";
+    } else {
+      $("#submitBtn").disabled = false;
+      $("#submitBtn").textContent = "Request Withdrawal";
+    }
+  }
+  refreshOpenState();
+  watch(PATH.withdrawals, ()=> refreshOpenState());
 
   const errBox = $("#formError"), okBox = $("#formSuccess");
   const showErr = m => { errBox.textContent = m; errBox.style.display = "flex"; okBox.style.display = "none"; };
   const showOk  = m => { okBox.textContent = m;  okBox.style.display = "flex"; errBox.style.display = "none"; };
 
-  async function loadMine(){
-    const list = (await listBy(PATH.withdrawals, "uid", profile.uid))
-      .sort((a,b)=> (b.createdAt||0)-(a.createdAt||0));
-    const el = $("#myList");
-    if(!list.length){ el.innerHTML = emptyState("🏦","No withdrawal requests","Your requests will appear here."); return; }
-    el.innerHTML = list.map(w=>`
-      <div class="detail-row">
-        <div>
-          <div style="font-weight:700;font-size:.92rem">${formatUGX(w.amount)}</div>
-          <div style="font-size:.75rem;color:var(--gray-400)">${formatDateTime(w.createdAt)}</div>
-          <div style="font-size:.72rem;color:var(--gray-400)">${esc(w.momo||"")}</div>
-        </div>
-        <div>${statusBadge(w.status)}</div>
-      </div>`).join("");
-  }
-  loadMine();
-  watch(PATH.withdrawals, ()=> loadMine());
-
-  $("#wForm").addEventListener("submit", async (e)=>{
+  $("#wForm").addEventListener("submit", async e => {
     e.preventDefault();
     errBox.style.display = "none"; okBox.style.display = "none";
 
@@ -116,8 +122,9 @@
     const accName = $("#accName").value.trim();
     const note = $("#note").value.trim();
 
-    if(!amount || amount <= 0) return showErr("Please enter a valid amount.");
-    if(amount > balance) return showErr("Amount exceeds your available balance.");
+    if(hasOpen) return showErr("You already have a withdrawal in progress.");
+    if(!amount || amount < config.minWithdrawal) return showErr(`Minimum withdrawal is ${formatUGX(config.minWithdrawal)}.`);
+    if(amount > available) return showErr("Amount exceeds your available earnings.");
     if(!/^[+\d][\d\s-]{6,}$/.test(momo)) return showErr("Please enter a valid Mobile Money number.");
     if(!accName) return showErr("Please enter the account name.");
 
@@ -128,21 +135,47 @@
         uid: profile.uid,
         userName: profile.name,
         userEmail: profile.email,
-        amount, momo, accountName: accName, note,
-        status: "PENDING",
-        createdAt: Date.now(),
+        amount,
+        method: "MOBILE_MONEY",
+        accountNumber: momo,
+        accountName: accName,
+        note,
+        status: "REQUESTED",
+        requestedAt: Date.now(),
         processedBy: null,
-        processedAt: null
+        processedAt: null,
+        rejectionReason: "",
+        history: {}
       });
-      showOk("Withdrawal request submitted. It will be processed manually.");
-      toast("Withdrawal requested", "success");
+      showOk("Request submitted. An administrator will process it.");
+      toast("Request submitted", "success");
       e.target.reset();
     }catch(err){
       showErr(err.message || "Could not submit request.");
     }finally{
-      btn.disabled = false; btn.textContent = "Submit Request";
+      btn.disabled = false;
+      if(!hasOpen) btn.textContent = "Request Withdrawal";
     }
   });
+
+  async function refreshMine(){
+    const list = (await listBy(PATH.withdrawals, "uid", profile.uid))
+      .sort((a,b) => (b.requestedAt || 0) - (a.requestedAt || 0));
+    const el = $("#myList");
+    if(!list.length){ el.innerHTML = emptyState("🏦","No withdrawal requests","Your requests will appear here."); return; }
+    el.innerHTML = list.map(w => `
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:700;font-size:.92rem">${formatUGX(w.amount)}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${formatDateTime(w.requestedAt)}</div>
+          <div style="font-size:.72rem;color:var(--gray-400)">${esc(w.accountNumber || "")}</div>
+          ${w.rejectionReason ? `<div style="font-size:.72rem;color:var(--red)">${esc(w.rejectionReason)}</div>` : ""}
+        </div>
+        <div>${statusBadge(w.status)}</div>
+      </div>`).join("");
+  }
+  refreshMine();
+  watch(PATH.withdrawals, ()=> refreshMine());
 </script>
 </body>
 </html>
