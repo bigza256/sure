@@ -15,7 +15,7 @@
   <div class="container">
     <div class="breadcrumb">Admin / Withdrawals</div>
     <h1>Withdrawal Management</h1>
-    <p>Move requests through the state machine. Balances update only at COMPLETED.</p>
+    <p>Review, process, or reject. Balance is only debited when you mark COMPLETED.</p>
   </div>
 </section>
 
@@ -23,8 +23,6 @@
   <div class="container">
     <div class="tabs" id="tabs">
       <button class="tab active" data-s="REQUESTED"  type="button">Requested</button>
-      <button class="tab"        data-s="PENDING"    type="button">Pending</button>
-      <button class="tab"        data-s="APPROVED"   type="button">Approved</button>
       <button class="tab"        data-s="PROCESSING" type="button">Processing</button>
       <button class="tab"        data-s="COMPLETED"  type="button">Completed</button>
       <button class="tab"        data-s="REJECTED"   type="button">Rejected</button>
@@ -34,7 +32,7 @@
     <div class="responsive-table">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>MoMo</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Requested</th><th>User</th><th>Amount</th><th>Account</th><th>Status</th><th></th></tr></thead>
           <tbody id="wBody"></tbody>
         </table>
       </div>
@@ -51,22 +49,29 @@
            formatUGX, formatDateTime, statusBadge, emptyState, esc,
            confirmDialog } from "../js/ui.js";
   import { requireAdmin } from "../js/auth.js";
-  import { listAll, watch, updateItem, logActivity, notify, PATH } from "../js/database.js";
-  import { writeLedgerEntry } from "../js/ledger.js";
-  import { db, ref, runTransaction } from "../js/firebase.js";
+  import { watch, PATH } from "../js/database.js";
+  import { transitionWithdrawal } from "../js/withdrawals.js";
 
   const admin = await requireAdmin();
-  renderHeader({ user: admin, isAdmin: true });
+  renderHeader({ user:admin, isAdmin:true });
   renderFooter();
-  renderBottomNav({ user: admin, isAdmin: true });
+  renderBottomNav({ user:admin, isAdmin:true });
 
   let filter = "REQUESTED";
   let list = [];
 
+  const NEXT = {
+    REQUESTED:  [["PENDING","Mark pending"],["APPROVED","Approve"],["REJECTED","Reject"]],
+    PENDING:    [["APPROVED","Approve"],["REJECTED","Reject"]],
+    APPROVED:   [["PROCESSING","Mark processing"],["REJECTED","Reject"]],
+    PROCESSING: [["COMPLETED","Mark completed"],["REJECTED","Reject"]]
+  };
+
   function render(){
-    const sorted = list.slice().sort((a,b) => (b.requestedAt || 0) - (a.requestedAt || 0));
+    const sorted = list.slice().sort((a,b) => (b.requestedAt||0) - (a.requestedAt||0));
     const filtered = filter === "ALL" ? sorted : sorted.filter(w => w.status === filter);
-    const body = $("#wBody"), mob = $("#wMobile");
+    const body = $("#wBody");
+    const mob  = $("#wMobile");
 
     if(!filtered.length){
       body.innerHTML = `<tr><td colspan="6">${emptyState("🏦","No withdrawals","Nothing matches this filter.")}</td></tr>`;
@@ -74,131 +79,64 @@
       return;
     }
 
+    const buttons = (w) => (NEXT[w.status] || []).map(([to, label]) => {
+      const cls = to === "REJECTED" ? "btn-danger"
+                : to === "COMPLETED" ? "btn-success"
+                : "btn-primary";
+      return `<button class="btn btn-sm ${cls}" data-act="${w.id}" data-to="${to}" type="button">${label}</button>`;
+    }).join(" ");
+
     body.innerHTML = filtered.map(w => `
       <tr>
         <td>${formatDateTime(w.requestedAt)}</td>
-        <td>${esc(w.userName || "—")}<div style="font-size:.75rem;color:var(--gray-400)">${esc(w.userEmail || "")}</div></td>
+        <td>${esc(w.userName || "—")}<div style="font-size:.72rem;color:var(--gray-400)">${esc(w.userEmail || "")}</div></td>
         <td class="money">${formatUGX(w.amount)}</td>
-        <td style="font-size:.8rem">${esc(w.accountNumber || "—")}<div style="font-size:.72rem;color:var(--gray-400)">${esc(w.accountName || "")}</div></td>
+        <td style="font-size:.8rem">${esc(w.accountNumber || "")}<div style="font-size:.72rem;color:var(--gray-400)">${esc(w.accountName || "")}</div></td>
         <td>${statusBadge(w.status)}</td>
-        <td>${actionButtons(w)}</td>
+        <td>${buttons(w)}</td>
       </tr>`).join("");
 
     mob.innerHTML = filtered.map(w => `
       <div class="card" style="padding:14px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <strong>${formatUGX(w.amount)}</strong>${statusBadge(w.status)}
+          <strong>${formatUGX(w.amount)}</strong>
+          ${statusBadge(w.status)}
         </div>
         <div style="font-size:.82rem">${esc(w.userName || "—")}</div>
         <div style="font-size:.75rem;color:var(--gray-400)">${esc(w.accountNumber || "")} · ${formatDateTime(w.requestedAt)}</div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${actionButtons(w)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">${buttons(w)}</div>
       </div>`).join("");
 
-    document.querySelectorAll("[data-next]").forEach(b => b.onclick = ()=> transition(b.dataset.id, b.dataset.next));
-    document.querySelectorAll("[data-reject]").forEach(b => b.onclick = ()=> rejectFlow(b.dataset.reject));
+    document.querySelectorAll("[data-act]").forEach(b => b.onclick = ()=> act(b.dataset.act, b.dataset.to));
   }
 
-  function actionButtons(w){
-    const btns = [];
-    if(w.status === "REQUESTED")  btns.push(`<button class="btn btn-sm btn-primary" data-next="PENDING" data-id="${w.id}" type="button">Mark Pending</button>`);
-    if(w.status === "PENDING")    btns.push(`<button class="btn btn-sm btn-primary" data-next="APPROVED" data-id="${w.id}" type="button">Approve</button>`);
-    if(w.status === "APPROVED")   btns.push(`<button class="btn btn-sm btn-primary" data-next="PROCESSING" data-id="${w.id}" type="button">Mark Processing</button>`);
-    if(w.status === "PROCESSING") btns.push(`<button class="btn btn-sm btn-success" data-next="COMPLETED" data-id="${w.id}" type="button">Mark Completed</button>`);
-    if(["REQUESTED","PENDING","APPROVED"].includes(w.status))
-      btns.push(`<button class="btn btn-sm btn-danger" data-reject="${w.id}" type="button">Reject</button>`);
-    return btns.join(" ");
-  }
-
-  async function transition(id, next){
-    const w = list.find(x => x.id === id);
+  async function act(wid, to){
+    const w = list.find(x => x.id === wid);
     if(!w) return;
 
-    if(next === "COMPLETED"){
+    if(to === "COMPLETED"){
       const ok = await confirmDialog({
-        title: "Mark withdrawal completed?",
-        message: `${formatUGX(w.amount)} will be debited from ${esc(w.userName || "the user")}'s available earnings and a ledger entry recorded. This cannot be undone.`,
+        title: "Mark completed?",
+        message: `${formatUGX(w.amount)} will be debited from ${esc(w.userName)}'s available earnings and a ledger entry recorded.`,
         confirmText: "Complete"
       });
       if(!ok) return;
     }
+    if(to === "REJECTED"){
+      const reason = prompt("Reason for rejection:");
+      if(reason === null) return;
+      return void doTransition(wid, to, reason.trim());
+    }
+    await doTransition(wid, to, "");
+  }
 
+  async function doTransition(wid, to, reason){
     try{
-      if(next === "COMPLETED"){
-        // Atomic debit from available earnings
-        const walRef = ref(db, `${PATH.users}/${w.uid}/wallets`);
-        const result = await runTransaction(walRef, (wal)=>{
-          if(!wal) return;
-          const cur = wal.availableEarnings || 0;
-          if(cur < w.amount) return; // abort — insufficient
-          wal.availableEarnings = cur - w.amount;
-          wal.totalWithdrawn = (wal.totalWithdrawn || 0) + w.amount;
-          return wal;
-        });
-        if(!result.committed) throw new Error("Insufficient available earnings.");
-
-        const nw = result.snapshot.val();
-        await writeLedgerEntry({
-          uid: w.uid, type: "WITHDRAWAL", amount: w.amount,
-          wallet: "availableEarnings",
-          previousBalance: (nw.availableEarnings || 0) + w.amount,
-          newBalance: nw.availableEarnings,
-          referenceId: id, actor: admin.uid,
-          note: `Withdrawal to ${w.accountNumber}`
-        });
-      }
-
-      await updateItem(PATH.withdrawals, id, {
-        status: next,
-        processedBy: admin.uid,
-        processedAt: Date.now(),
-        [`history/${Date.now()}`]: { from: w.status, to: next, by: admin.uid }
-      });
-      await logActivity({
-        adminId: admin.uid, action: `WITHDRAWAL_${next}`, target: id,
-        prev: w.status, next,
-        note: `${formatUGX(w.amount)} for ${w.userEmail}`
-      });
-      await notify(w.uid, {
-        type: `WITHDRAWAL_${next}`,
-        title: "Withdrawal update",
-        body: `Your withdrawal of ${formatUGX(w.amount)} is now ${next}.`,
-        meta: { withdrawalId: id, status: next }
-      });
-      toast(`Withdrawal → ${next}`, "success");
+      await transitionWithdrawal({ wid, adminUid: admin.uid, to, reason });
+      toast(`Marked ${to}`, "success");
     }catch(err){
       toast(err.message || "Failed", "error");
     }
-  }
-
-  async function rejectFlow(id){
-    const w = list.find(x => x.id === id);
-    const reason = prompt("Rejection reason (visible to user):");
-    if(!reason || reason.trim().length < 3) return;
-    const ok = await confirmDialog({
-      title: "Reject withdrawal?",
-      message: "No balance will change. The user will see the reason.",
-      confirmText: "Reject", danger: true
-    });
-    if(!ok) return;
-
-    await updateItem(PATH.withdrawals, id, {
-      status: "REJECTED",
-      processedBy: admin.uid,
-      processedAt: Date.now(),
-      rejectionReason: reason.trim(),
-      [`history/${Date.now()}`]: { from: w.status, to: "REJECTED", by: admin.uid }
-    });
-    await notify(w.uid, {
-      type: "WITHDRAWAL_REJECTED",
-      title: "Withdrawal rejected",
-      body: `Your withdrawal was rejected: ${reason.trim()}`,
-      meta: { withdrawalId: id }
-    });
-    await logActivity({
-      adminId: admin.uid, action: "WITHDRAWAL_REJECTED", target: id,
-      prev: w.status, next: "REJECTED", note: reason.trim()
-    });
-    toast("Withdrawal rejected", "warn");
   }
 
   $("#tabs").addEventListener("click", e => {
