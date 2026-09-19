@@ -3,8 +3,9 @@
 // ============================================
 import {
   auth, db, onAuthStateChanged, createUserWithEmailAndPassword,
-  signInWithEmailAndPassword, signOut, sendPasswordResetEmail,
-  updateProfile, ref, get, set, update, serverTimestamp
+  signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider,
+  signOut, sendPasswordResetEmail, updateProfile,
+  ref, get, set, update
 } from "./firebase.js";
 
 const USERS = "users";
@@ -35,6 +36,9 @@ export async function loadUserProfile(uid){
 export function currentUser(){ return auth.currentUser; }
 export function currentProfile(){ return _profileCache; }
 
+// ------------------------------------------------------------
+// Email + password registration
+// ------------------------------------------------------------
 export async function registerUser({ name, phone, email, password }){
   // Security: role is ALWAYS "user" at signup — never user-supplied
   const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -45,8 +49,9 @@ export async function registerUser({ name, phone, email, password }){
     name: name.trim(),
     email: email.trim().toLowerCase(),
     phone: phone.trim(),
-    role: "user",                 // <-- hardcoded; admins must be set server-side
+    role: "user",                 // hardcoded; admins must be set server-side
     status: "active",
+    provider: "password",
     balance: 0,
     reserveBalance: 0,
     totalDeposited: 0,
@@ -59,12 +64,59 @@ export async function registerUser({ name, phone, email, password }){
   return profile;
 }
 
+// ------------------------------------------------------------
+// Email + password login
+// ------------------------------------------------------------
 export async function loginUser(email, password){
   const cred = await signInWithEmailAndPassword(auth, email, password);
   _profileCache = await loadUserProfile(cred.user.uid);
   return _profileCache;
 }
 
+// ------------------------------------------------------------
+// Google sign-in (creates a profile on first use)
+// ------------------------------------------------------------
+export async function loginWithGoogle(){
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+
+  const cred = await signInWithPopup(auth, provider);
+  const user = cred.user;
+
+  // Load existing profile or create one
+  let profile = await loadUserProfile(user.uid);
+
+  if(!profile){
+    profile = {
+      uid: user.uid,
+      name: user.displayName || "Google User",
+      email: user.email || "",
+      phone: "",                       // user can add this later in settings
+      role: "user",                    // never admin from client
+      status: "active",
+      provider: "google",
+      balance: 0,
+      reserveBalance: 0,
+      totalDeposited: 0,
+      totalWithdrawn: 0,
+      totalDistributed: 0,
+      createdAt: Date.now()
+    };
+    await set(ref(db, `${USERS}/${user.uid}`), profile);
+  }
+
+  if(profile.status === "suspended"){
+    await signOut(auth);
+    throw new Error("This account has been suspended.");
+  }
+
+  _profileCache = profile;
+  return profile;
+}
+
+// ------------------------------------------------------------
+// Sign out / reset
+// ------------------------------------------------------------
 export async function logoutUser(){
   await signOut(auth);
   location.href = "login.html";
@@ -74,7 +126,9 @@ export async function resetPassword(email){
   await sendPasswordResetEmail(auth, email);
 }
 
-/** Require signed-in user; redirect to login if absent. */
+// ------------------------------------------------------------
+// Guards
+// ------------------------------------------------------------
 export async function requireAuth(redirect="login.html"){
   const profile = await whenAuthReady();
   if(!profile){ location.href = redirect; throw new Error("Not authenticated"); }
@@ -86,7 +140,6 @@ export async function requireAuth(redirect="login.html"){
   return profile;
 }
 
-/** Require admin role. */
 export async function requireAdmin(){
   const profile = await requireAuth("../login.html");
   if(profile.role !== "admin"){
