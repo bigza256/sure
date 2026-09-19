@@ -1,12 +1,11 @@
 // ============================================
 // SURE — data access + atomic financial workflows
+// Every balance-changing operation writes a matching ledger row.
 // ============================================
-
 import {
   db, ref, get, set, update, push, query,
   orderByChild, equalTo, onValue
 } from "./firebase.js";
-
 import {
   calculateActiveAllocation,
   calculateProtectedReserve,
@@ -25,14 +24,14 @@ export const PATH = {
   betRecords:          "bet_records",
   withdrawals:         "withdrawals",
   notifications:       "notifications",
-  auditLogs:            "audit_logs",
-  systemConfig:         "system_config",
+  auditLogs:           "audit_logs",
+  systemConfig:        "system_config",
   systemConfigHistory: "system_config_history",
   admins:              "admins",
   comments:            "comments"
 };
 
-const ZERO_WALLETS = {
+export const ZERO_WALLETS = {
   activeAllocation: 0,
   protectedReserve: 0,
   availableEarnings: 0,
@@ -42,27 +41,17 @@ const ZERO_WALLETS = {
   companyShareContributed: 0
 };
 
-// ================================================================
-// CREATE DEPOSIT SUBMISSION
-// Create a deposit submission with depositId === record key.
-// The rule requires this equality; doing it in one call avoids a
-// separate update round-trip.
-// ================================================================
-export async function createDepositSubmission(data){
-  const newRef = push(ref(db, PATH.depositSubmissions));
-  const depositId = newRef.key;
-
-  await set(newRef, {
-    depositId,
-    ...data,
-    relatedContributionId: null,
-    relatedTransactionIds: [],
-    reviewedAt: null,
-    reviewedBy: null,
-    rejectionReason: ""
-  });
-
-  return depositId;
+// ----------------------------------------------------------------
+// ADMIN CHECK  (reads admins/{uid} — matches the security rules)
+// ----------------------------------------------------------------
+export async function isAdmin(uid){
+  if(!uid) return false;
+  try{
+    const snap = await get(ref(db, `${PATH.admins}/${uid}`));
+    return snap.exists() && snap.val() === true;
+  }catch(_){
+    return false;
+  }
 }
 
 // ----------------------------------------------------------------
@@ -72,29 +61,19 @@ export async function getOnce(path){
   const snap = await get(ref(db, path));
   return snap.exists() ? snap.val() : null;
 }
-
 export function watch(path, cb){
-  return onValue(ref(db, path), snap =>
-    cb(snap.exists() ? snap.val() : null)
-  );
+  return onValue(ref(db, path), snap => cb(snap.exists() ? snap.val() : null));
 }
-
 export async function listAll(path){
   const data = await getOnce(path);
   if(!data) return [];
   return Object.entries(data).map(([id, v]) => ({ id, ...v }));
 }
-
 export async function listBy(path, field, value){
   const q = query(ref(db, path), orderByChild(field), equalTo(value));
   const snap = await get(q);
-
   if(!snap.exists()) return [];
-
-  return Object.entries(snap.val()).map(([id, v]) => ({
-    id,
-    ...v
-  }));
+  return Object.entries(snap.val()).map(([id, v]) => ({ id, ...v }));
 }
 
 // ----------------------------------------------------------------
@@ -102,68 +81,38 @@ export async function listBy(path, field, value){
 // ----------------------------------------------------------------
 export async function pushItem(path, data){
   const r = push(ref(db, path));
-  await set(r, {
-    id: r.key,
-    ...data
-  });
+  await set(r, { id: r.key, ...data });
   return r.key;
 }
-
-/**
- * Update an existing item.
- */
 export async function updateItem(path, id, data){
   await update(ref(db, `${path}/${id}`), data);
 }
 
 /** Append to the immutable audit log. */
-export async function logActivity({
-  adminId,
-  action,
-  target=null,
-  prev=null,
-  next=null,
-  note=""
-}){
+export async function logActivity({ adminId, action, target=null, prev=null, next=null, note="" }){
   return pushItem(PATH.auditLogs, {
-    actor: adminId,
-    actorRole: "admin",
-    action,
-    target,
-    previousValue: prev,
-    newValue: next,
-    note,
+    actor: adminId, actorRole: "admin", action, target,
+    previousValue: prev, newValue: next, note,
     timestamp: Date.now()
   });
 }
 
 /** Fire-and-forget user notification. */
-export async function notifyUser(
-  uid,
-  { type, title, body="", meta={} }
-){
+export async function notifyUser(uid, { type, title, body="", meta={} }){
   return pushItem(`${PATH.notifications}/${uid}`, {
-    type,
-    title,
-    body,
-    meta,
-    read: false,
-    createdAt: Date.now()
+    type, title, body, meta, read: false, createdAt: Date.now()
   });
 }
 
-/**
- * Compute the current risk state for a user's wallets.
- * Pure — no DB write. Used by the dashboard and after every settlement.
- */
+// ----------------------------------------------------------------
+// DERIVED STATE
+// ----------------------------------------------------------------
 export function deriveRiskState(wallets, config){
   const reservePct = calculateReservePercent(
     wallets.protectedReserve,
     wallets.activeAllocation
   );
-
   const level = calculateRiskLevel(reservePct, config);
-
   return {
     level,
     reservePercent: Math.round(reservePct * 10) / 10,
@@ -171,100 +120,65 @@ export function deriveRiskState(wallets, config){
   };
 }
 
+// ----------------------------------------------------------------
+// DEPOSIT SUBMISSION (user side)
+// depositId must equal the record key — the security rule requires it.
+// ----------------------------------------------------------------
+export async function createDepositSubmission(data){
+  const newRef = push(ref(db, PATH.depositSubmissions));
+  const depositId = newRef.key;
+  await set(newRef, {
+    depositId,
+    ...data,
+    relatedContributionId: null,
+    relatedTransactionIds: [],
+    reviewedAt: null,
+    reviewedBy: null,
+    rejectionReason: ""
+  });
+  return depositId;
+}
+
 // ================================================================
 // ATOMIC WORKFLOW: APPROVE DEPOSIT
-// Called by an admin from admin/deposits.html.
-// Writes wallets, contribution, cycle, ledger, deposit status,
-// and audit log — all in one atomic multi-path update.
+// Credits wallets, creates contribution + cycle + ledger, all in one
+// atomic multi-path update.
 // ================================================================
-export async function approveDeposit({
-  deposit,
-  adminUid,
-  config
-}){
-  // 1. Guard: only pending deposits
-  const fresh = await getOnce(
-    `${PATH.depositSubmissions}/${deposit.depositId}`
-  );
-
+export async function approveDeposit({ deposit, adminUid, config }){
+  const fresh = await getOnce(`${PATH.depositSubmissions}/${deposit.depositId}`);
   if(!fresh) throw new Error("Deposit not found.");
+  if(fresh.status !== "PENDING") throw new Error("Deposit has already been reviewed.");
 
-  if(fresh.status !== "PENDING"){
-    throw new Error("Deposit has already been reviewed.");
-  }
-
-  // 2. Read the current user record
   const user = await getOnce(`${PATH.users}/${deposit.uid}`);
-
   if(!user) throw new Error("User record not found.");
+  if(user.status === "suspended") throw new Error("User account is suspended.");
 
-  if(user.status === "suspended"){
-    throw new Error("User account is suspended.");
-  }
+  const wallets = { ...ZERO_WALLETS, ...(user.wallets || {}) };
 
-  const wallets = {
-    ...ZERO_WALLETS,
-    ...(user.wallets || {})
-  };
-
-  // 3. Compute the split
-  const allocation = calculateActiveAllocation(
-    deposit.amount,
-    config
-  );
-
-  const reserve = calculateProtectedReserve(
-    deposit.amount,
-    config
-  );
+  const allocation = calculateActiveAllocation(deposit.amount, config);
+  const reserve    = calculateProtectedReserve(deposit.amount, config);
 
   const newWallets = {
     ...wallets,
-    activeAllocation:
-      wallets.activeAllocation + allocation,
-    protectedReserve:
-      wallets.protectedReserve + reserve,
-    totalContribution:
-      wallets.totalContribution + deposit.amount
+    activeAllocation:  wallets.activeAllocation  + allocation,
+    protectedReserve:  wallets.protectedReserve  + reserve,
+    totalContribution: wallets.totalContribution + deposit.amount
   };
 
-  const riskState = deriveRiskState(
-    newWallets,
-    config
-  );
+  const riskState = deriveRiskState(newWallets, config);
 
-  // 4. Build IDs
   const now = Date.now();
+  const contributionId = push(ref(db, PATH.contributions)).key;
+  const cycleId        = push(ref(db, PATH.cycles)).key;
+  const txContrib      = push(ref(db, PATH.transactions)).key;
+  const txAllocation   = push(ref(db, PATH.transactions)).key;
+  const txReserve      = push(ref(db, PATH.transactions)).key;
+  const logId          = push(ref(db, PATH.auditLogs)).key;
 
-  const contributionId =
-    push(ref(db, PATH.contributions)).key;
-
-  const cycleId =
-    push(ref(db, PATH.cycles)).key;
-
-  const txContrib =
-    push(ref(db, PATH.transactions)).key;
-
-  const txAllocation =
-    push(ref(db, PATH.transactions)).key;
-
-  const txReserve =
-    push(ref(db, PATH.transactions)).key;
-
-  const logId =
-    push(ref(db, PATH.auditLogs)).key;
-
-  // 5. Compose one atomic update
   const u = {};
-
-  u[`${PATH.users}/${deposit.uid}/wallets`] =
-    newWallets;
-
-  u[`${PATH.users}/${deposit.uid}/riskState`] =
-    riskState;
-
-  u[`${PATH.users}/${deposit.uid}/currentCycleId`] =
-    cycleId;
+  u[`${PATH.users}/${deposit.uid}/wallets`]        = newWallets;
+  u[`${PATH.users}/${deposit.uid}/riskState`]      = riskState;
+  u[`${PATH.users}/${deposit.uid}/currentCycleId`] = cycleId;
 
   u[`${PATH.contributions}/${contributionId}`] = {
     contributionId,
@@ -288,7 +202,7 @@ export async function approveDeposit({
     startingContribution: deposit.amount,
     startingReserve: newWallets.protectedReserve,
     startDate: now,
-    endDate: now + config.cycleDays * 86400000,
+    endDate: now + (config.cycleDays || 30) * 86400000,
     currentReserve: newWallets.protectedReserve,
     availableEarnings: newWallets.availableEarnings,
     totalActiveAllocations: 0,
@@ -304,73 +218,47 @@ export async function approveDeposit({
   };
 
   const base = {
-    uid: deposit.uid,
-    cycleId,
-    currency: "UGX",
-    status: "COMPLETED",
-    timestamp: now,
-    actor: adminUid
+    uid: deposit.uid, cycleId, currency: "UGX",
+    status: "COMPLETED", timestamp: now, actor: adminUid
   };
 
   u[`${PATH.transactions}/${txContrib}`] = {
-    ...base,
-    txId: txContrib,
-    type: "CONTRIBUTION",
-    amount: deposit.amount,
-    wallet: "totalContribution",
+    ...base, txId: txContrib, type: "CONTRIBUTION",
+    amount: deposit.amount, wallet: "totalContribution",
     previousBalance: wallets.totalContribution,
     newBalance: newWallets.totalContribution,
     referenceId: deposit.depositId,
     note: "Contribution approved"
   };
-
   u[`${PATH.transactions}/${txAllocation}`] = {
-    ...base,
-    txId: txAllocation,
-    type: "ACTIVE_ALLOCATION",
-    amount: allocation,
-    wallet: "activeAllocation",
+    ...base, txId: txAllocation, type: "ACTIVE_ALLOCATION",
+    amount: allocation, wallet: "activeAllocation",
     previousBalance: wallets.activeAllocation,
     newBalance: newWallets.activeAllocation,
     referenceId: contributionId,
     note: "Active allocation credit"
   };
-
   u[`${PATH.transactions}/${txReserve}`] = {
-    ...base,
-    txId: txReserve,
-    type: "RESERVE_ADDITION",
-    amount: reserve,
-    wallet: "protectedReserve",
+    ...base, txId: txReserve, type: "RESERVE_ADDITION",
+    amount: reserve, wallet: "protectedReserve",
     previousBalance: wallets.protectedReserve,
     newBalance: newWallets.protectedReserve,
     referenceId: contributionId,
     note: "Protected reserve credit"
   };
 
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/status`] =
-    "APPROVED";
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedAt`] =
-    now;
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedBy`] =
-    adminUid;
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/relatedContributionId`] =
-    contributionId;
-
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/status`] = "APPROVED";
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedAt`] = now;
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedBy`] = adminUid;
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/relatedContributionId`] = contributionId;
   u[`${PATH.depositSubmissions}/${deposit.depositId}/relatedTransactionIds`] =
     [txContrib, txAllocation, txReserve];
 
   u[`${PATH.auditLogs}/${logId}`] = {
-    logId,
-    actor: adminUid,
-    actorRole: "admin",
+    logId, actor: adminUid, actorRole: "admin",
     action: "APPROVE_DEPOSIT",
     target: deposit.depositId,
-    previousValue: "PENDING",
-    newValue: "APPROVED",
+    previousValue: "PENDING", newValue: "APPROVED",
     note: `UGX ${deposit.amount} for ${deposit.userEmail || deposit.uid}`,
     timestamp: now
   };
@@ -380,384 +268,136 @@ export async function approveDeposit({
   await notifyUser(deposit.uid, {
     type: "DEPOSIT_APPROVED",
     title: "Contribution received",
-    body:
-      `Your contribution of UGX ${deposit.amount.toLocaleString()} has been approved.`,
-    meta: {
-      contributionId,
-      cycleId
-    }
+    body: `Your contribution of UGX ${deposit.amount.toLocaleString()} has been approved.`,
+    meta: { contributionId, cycleId }
   });
 
-  return {
-    contributionId,
-    cycleId,
-    txIds: [
-      txContrib,
-      txAllocation,
-      txReserve
-    ]
-  };
+  return { contributionId, cycleId, txIds: [txContrib, txAllocation, txReserve] };
 }
 
 // ================================================================
 // ATOMIC WORKFLOW: REJECT DEPOSIT
 // ================================================================
-export async function rejectDeposit({
-  deposit,
-  adminUid,
-  reason
-}){
-  const fresh = await getOnce(
-    `${PATH.depositSubmissions}/${deposit.depositId}`
-  );
-
-  if(!fresh || fresh.status !== "PENDING"){
-    throw new Error("Already reviewed.");
-  }
+export async function rejectDeposit({ deposit, adminUid, reason }){
+  const fresh = await getOnce(`${PATH.depositSubmissions}/${deposit.depositId}`);
+  if(!fresh || fresh.status !== "PENDING") throw new Error("Already reviewed.");
 
   const now = Date.now();
-
-  const logId =
-    push(ref(db, PATH.auditLogs)).key;
+  const logId = push(ref(db, PATH.auditLogs)).key;
 
   const u = {};
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/status`] =
-    "REJECTED";
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedAt`] =
-    now;
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedBy`] =
-    adminUid;
-
-  u[`${PATH.depositSubmissions}/${deposit.depositId}/rejectionReason`] =
-    reason || "";
-
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/status`] = "REJECTED";
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedAt`] = now;
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/reviewedBy`] = adminUid;
+  u[`${PATH.depositSubmissions}/${deposit.depositId}/rejectionReason`] = reason || "";
   u[`${PATH.auditLogs}/${logId}`] = {
-    logId,
-    actor: adminUid,
-    actorRole: "admin",
-    action: "REJECT_DEPOSIT",
-    target: deposit.depositId,
-    previousValue: "PENDING",
-    newValue: "REJECTED",
-    note: reason || "",
-    timestamp: now
+    logId, actor: adminUid, actorRole: "admin",
+    action: "REJECT_DEPOSIT", target: deposit.depositId,
+    previousValue: "PENDING", newValue: "REJECTED",
+    note: reason || "", timestamp: now
   };
-
   await update(ref(db), u);
 
   await notifyUser(deposit.uid, {
     type: "DEPOSIT_REJECTED",
     title: "Contribution rejected",
-    body:
-      reason
-        ? `Reason: ${reason}`
-        : "Your deposit could not be verified."
+    body: reason ? `Reason: ${reason}` : "Your deposit could not be verified."
   });
 }
 
 // ================================================================
-// ATOMIC WORKFLOW: COMPLETE WITHDRAWAL
-// Debits availableEarnings only when admin marks COMPLETED.
+// ATOMIC WORKFLOW: BET WIN
+// Stake is consumed and returned (net zero on principal).
+// Profit splits per config: earnings / company / reserve.
 // ================================================================
-export async function completeWithdrawal({
-  withdrawal,
-  adminUid,
-  config
-}){
-  const fresh = await getOnce(
-    `${PATH.withdrawals}/${withdrawal.wid}`
-  );
-
-  if(!fresh) throw new Error("Withdrawal not found.");
-
-  if(fresh.status === "COMPLETED"){
-    throw new Error("Already completed.");
-  }
-
-  if(fresh.status === "REJECTED"){
-    throw new Error(
-      "Cannot complete a rejected withdrawal."
-    );
-  }
-
-  const user = await getOnce(
-    `${PATH.users}/${withdrawal.uid}`
-  );
-
-  if(!user) throw new Error("User record not found.");
-
-  const wallets = {
-    ...ZERO_WALLETS,
-    ...(user.wallets || {})
-  };
-
-  if(wallets.availableEarnings < withdrawal.amount){
-    throw new Error("Insufficient available earnings.");
-  }
-
-  const newWallets = {
-    ...wallets,
-    availableEarnings:
-      wallets.availableEarnings - withdrawal.amount,
-    totalWithdrawn:
-      wallets.totalWithdrawn + withdrawal.amount
-  };
-
-  const now = Date.now();
-
-  const txId =
-    push(ref(db, PATH.transactions)).key;
-
-  const logId =
-    push(ref(db, PATH.auditLogs)).key;
-
-  const u = {};
-
-  u[`${PATH.users}/${withdrawal.uid}/wallets`] =
-    newWallets;
-
-  u[`${PATH.withdrawals}/${withdrawal.wid}/status`] =
-    "COMPLETED";
-
-  u[`${PATH.withdrawals}/${withdrawal.wid}/processedBy`] =
-    adminUid;
-
-  u[`${PATH.withdrawals}/${withdrawal.wid}/processedAt`] =
-    now;
-
-  u[`${PATH.transactions}/${txId}`] = {
-    txId,
-    uid: withdrawal.uid,
-    cycleId: user.currentCycleId || "",
-    type: "WITHDRAWAL",
-    amount: -withdrawal.amount,
-    currency: "UGX",
-    wallet: "availableEarnings",
-    previousBalance: wallets.availableEarnings,
-    newBalance: newWallets.availableEarnings,
-    referenceId: withdrawal.wid,
-    status: "COMPLETED",
-    timestamp: now,
-    actor: adminUid,
-    note: "Withdrawal completed"
-  };
-
-  u[`${PATH.auditLogs}/${logId}`] = {
-    logId,
-    actor: adminUid,
-    actorRole: "admin",
-    action: "WITHDRAWAL_COMPLETED",
-    target: withdrawal.wid,
-    previousValue: fresh.status,
-    newValue: "COMPLETED",
-    note: `UGX ${withdrawal.amount}`,
-    timestamp: now
-  };
-
-  await update(ref(db), u);
-
-  await notifyUser(withdrawal.uid, {
-    type: "WITHDRAWAL_COMPLETED",
-    title: "Withdrawal completed",
-    body:
-      `UGX ${withdrawal.amount.toLocaleString()} has been processed.`
-  });
-}
-
-// ================================================================
-// ATOMIC WORKFLOW: RECORD BET OUTCOME (WIN)
-// Called by admin after a bet closes. Distributes profit across
-// the three wallets and updates the cycle totals.
-// ================================================================
-export async function recordBetWin({
-  uid,
-  cycleId,
-  stake,
-  odds,
-  adminUid,
-  config,
-  betId
-}){
-  const user = await getOnce(
-    `${PATH.users}/${uid}`
-  );
-
+export async function recordBetWin({ uid, cycleId, stake, odds, adminUid, config, betId }){
+  const user = await getOnce(`${PATH.users}/${uid}`);
   if(!user) throw new Error("User not found.");
+  const wallets = { ...ZERO_WALLETS, ...(user.wallets || {}) };
+  if(wallets.activeAllocation < stake) throw new Error("Insufficient allocation.");
 
-  const wallets = {
-    ...ZERO_WALLETS,
-    ...(user.wallets || {})
-  };
+  const grossReturn = Math.round(stake * odds);
+  const grossProfit = grossReturn - stake;
+  const dist = calculateProfitDistribution(grossProfit, config);
 
-  if(wallets.activeAllocation < stake){
-    throw new Error("Insufficient allocation.");
-  }
-
-  const grossReturn =
-    Math.round(stake * odds);
-
-  const grossProfit =
-    grossReturn - stake;
-
-  const dist =
-    calculateProfitDistribution(
-      grossProfit,
-      config
-    );
-
-  // Stake returns to allocation; profit splits 3 ways.
-  // On win: stake returns -> activeAllocation stays same (stake was consumed,
-  // then returns). For simplicity, we consume the stake then add back
-  // return, which nets out to +grossProfit spread across destinations.
+  // Principal: stake leaves allocation, stake returns. Net zero.
+  // Profit: split three ways.
   const newWallets = {
     ...wallets,
-
-    // Active allocation decreases by stake (stake was used)
-    activeAllocation:
-      wallets.activeAllocation - stake,
-
-    // Available earnings gets the user's profit share
-    availableEarnings:
-      wallets.availableEarnings +
-      dist.availableEarnings,
-
-    // Reserve gets the reserve-addition share
-    protectedReserve:
-      wallets.protectedReserve +
-      dist.reserveAddition,
-
-    // Company share is tracked separately (not user money)
-    companyShareContributed:
-      wallets.companyShareContributed +
-      dist.companyShare,
-
-    totalEarningsGenerated:
-      wallets.totalEarningsGenerated +
-      dist.availableEarnings
+    availableEarnings:       wallets.availableEarnings       + dist.availableEarnings,
+    protectedReserve:        wallets.protectedReserve        + dist.reserveAddition,
+    companyShareContributed: wallets.companyShareContributed + dist.companyShare,
+    totalEarningsGenerated:  wallets.totalEarningsGenerated  + dist.availableEarnings
   };
+  const riskState = deriveRiskState(newWallets, config);
 
-  const riskState =
-    deriveRiskState(
-      newWallets,
-      config
-    );
-
+  const cycle = await getOnce(`${PATH.cycles}/${cycleId}`) || {};
   const now = Date.now();
 
-  const txWin =
-    push(ref(db, PATH.transactions)).key;
-
-  const txDist =
-    push(ref(db, PATH.transactions)).key;
-
-  const txRes =
-    push(ref(db, PATH.transactions)).key;
-
-  const txCo =
-    push(ref(db, PATH.transactions)).key;
-
-  const logId =
-    push(ref(db, PATH.auditLogs)).key;
+  const txStake  = push(ref(db, PATH.transactions)).key;
+  const txReturn = push(ref(db, PATH.transactions)).key;
+  const txEarn   = push(ref(db, PATH.transactions)).key;
+  const txRes    = push(ref(db, PATH.transactions)).key;
+  const txCo     = push(ref(db, PATH.transactions)).key;
+  const logId    = push(ref(db, PATH.auditLogs)).key;
 
   const base = {
-    uid,
-    cycleId,
-    currency: "UGX",
-    status: "COMPLETED",
-    timestamp: now,
-    actor: adminUid,
-    referenceId: betId
+    uid, cycleId, currency: "UGX", status: "COMPLETED",
+    timestamp: now, actor: adminUid, referenceId: betId
   };
 
   const u = {};
+  u[`${PATH.users}/${uid}/wallets`]   = newWallets;
+  u[`${PATH.users}/${uid}/riskState`] = riskState;
 
-  u[`${PATH.users}/${uid}/wallets`] =
-    newWallets;
-
-  u[`${PATH.users}/${uid}/riskState`] =
-    riskState;
-
-  u[`${PATH.transactions}/${txWin}`] = {
-    ...base,
-    txId: txWin,
-    type: "BET_WIN",
-    amount: stake,
-    wallet: "activeAllocation",
+  u[`${PATH.transactions}/${txStake}`] = {
+    ...base, txId: txStake, type: "BET_STAKE",
+    amount: -stake, wallet: "activeAllocation",
     previousBalance: wallets.activeAllocation,
     newBalance: wallets.activeAllocation - stake,
-    note: `Stake consumed on win @ ${odds}`
+    note: `Stake committed @ ${odds}`
   };
-
-  u[`${PATH.transactions}/${txDist}`] = {
-    ...base,
-    txId: txDist,
-    type: "PROFIT_DISTRIBUTION",
-    amount: dist.availableEarnings,
-    wallet: "availableEarnings",
+  u[`${PATH.transactions}/${txReturn}`] = {
+    ...base, txId: txReturn, type: "STAKE_RETURN",
+    amount: stake, wallet: "activeAllocation",
+    previousBalance: wallets.activeAllocation - stake,
+    newBalance: wallets.activeAllocation,
+    note: `Stake returned @ ${odds}`
+  };
+  u[`${PATH.transactions}/${txEarn}`] = {
+    ...base, txId: txEarn, type: "PROFIT_DISTRIBUTION",
+    amount: dist.availableEarnings, wallet: "availableEarnings",
     previousBalance: wallets.availableEarnings,
     newBalance: newWallets.availableEarnings,
     note: "Available earnings credit"
   };
-
   u[`${PATH.transactions}/${txRes}`] = {
-    ...base,
-    txId: txRes,
-    type: "RESERVE_ADDITION",
-    amount: dist.reserveAddition,
-    wallet: "protectedReserve",
+    ...base, txId: txRes, type: "RESERVE_ADDITION",
+    amount: dist.reserveAddition, wallet: "protectedReserve",
     previousBalance: wallets.protectedReserve,
     newBalance: newWallets.protectedReserve,
     note: "Reserve credit from profit"
   };
-
   u[`${PATH.transactions}/${txCo}`] = {
-    ...base,
-    txId: txCo,
-    type: "COMPANY_SHARE",
-    amount: dist.companyShare,
-    wallet: "companyShare",
+    ...base, txId: txCo, type: "COMPANY_SHARE",
+    amount: dist.companyShare, wallet: "companyShare",
     previousBalance: wallets.companyShareContributed,
     newBalance: newWallets.companyShareContributed,
     note: "Company share recorded"
   };
 
-  // Cycle totals
-  u[`${PATH.cycles}/${cycleId}/currentReserve`] =
-    newWallets.protectedReserve;
-
-  u[`${PATH.cycles}/${cycleId}/availableEarnings`] =
-    newWallets.availableEarnings;
-
-  u[`${PATH.cycles}/${cycleId}/totalWins`] =
-    (user.wallets?.totalWins || 0) +
-    grossProfit;
-
-  u[`${PATH.cycles}/${cycleId}/winsCount`] =
-    (user.wallets?.winsCount || 0) +
-    1;
-
-  u[`${PATH.cycles}/${cycleId}/totalCompanyShare`] =
-    (user.wallets?.totalCompanyShare || 0) +
-    dist.companyShare;
+  u[`${PATH.cycles}/${cycleId}/currentReserve`]    = newWallets.protectedReserve;
+  u[`${PATH.cycles}/${cycleId}/availableEarnings`] = newWallets.availableEarnings;
+  u[`${PATH.cycles}/${cycleId}/totalWins`]         = (cycle.totalWins || 0) + grossProfit;
+  u[`${PATH.cycles}/${cycleId}/winsCount`]         = (cycle.winsCount || 0) + 1;
+  u[`${PATH.cycles}/${cycleId}/totalCompanyShare`] = (cycle.totalCompanyShare || 0) + dist.companyShare;
 
   u[`${PATH.auditLogs}/${logId}`] = {
-    logId,
-    actor: adminUid,
-    actorRole: "admin",
-    action: "BET_WIN",
-    target: betId,
+    logId, actor: adminUid, actorRole: "admin",
+    action: "BET_WIN", target: betId,
     previousValue: null,
-    newValue: {
-      stake,
-      odds,
-      grossProfit,
-      distribution: dist
-    },
-    note: `Won @ ${odds}`,
-    timestamp: now
+    newValue: { stake, odds, grossProfit, distribution: dist },
+    note: `Won @ ${odds}`, timestamp: now
   };
 
   await update(ref(db), u);
@@ -765,104 +405,52 @@ export async function recordBetWin({
   await notifyUser(uid, {
     type: "PROFIT_CREDITED",
     title: "Bet won",
-    body:
-      `Profit of UGX ${grossProfit.toLocaleString()} distributed.`
+    body: `Profit of UGX ${grossProfit.toLocaleString()} distributed.`
   });
 }
 
 // ================================================================
-// ATOMIC WORKFLOW: RECORD BET OUTCOME (LOSS)
+// ATOMIC WORKFLOW: BET LOSS
+// Stake leaves the active allocation permanently.
 // ================================================================
-export async function recordBetLoss({
-  uid,
-  cycleId,
-  stake,
-  odds,
-  adminUid,
-  config,
-  betId
-}){
-  const user = await getOnce(
-    `${PATH.users}/${uid}`
-  );
-
+export async function recordBetLoss({ uid, cycleId, stake, odds, adminUid, config, betId }){
+  const user = await getOnce(`${PATH.users}/${uid}`);
   if(!user) throw new Error("User not found.");
-
-  const wallets = {
-    ...ZERO_WALLETS,
-    ...(user.wallets || {})
-  };
-
-  if(wallets.activeAllocation < stake){
-    throw new Error("Insufficient allocation.");
-  }
+  const wallets = { ...ZERO_WALLETS, ...(user.wallets || {}) };
+  if(wallets.activeAllocation < stake) throw new Error("Insufficient allocation.");
 
   const newWallets = {
     ...wallets,
-    activeAllocation:
-      wallets.activeAllocation - stake
+    activeAllocation: wallets.activeAllocation - stake
   };
+  const riskState = deriveRiskState(newWallets, config);
 
-  const riskState =
-    deriveRiskState(
-      newWallets,
-      config
-    );
-
+  const cycle = await getOnce(`${PATH.cycles}/${cycleId}`) || {};
   const now = Date.now();
-
-  const txId =
-    push(ref(db, PATH.transactions)).key;
-
-  const logId =
-    push(ref(db, PATH.auditLogs)).key;
+  const txId  = push(ref(db, PATH.transactions)).key;
+  const logId = push(ref(db, PATH.auditLogs)).key;
 
   const u = {};
-
-  u[`${PATH.users}/${uid}/wallets`] =
-    newWallets;
-
-  u[`${PATH.users}/${uid}/riskState`] =
-    riskState;
+  u[`${PATH.users}/${uid}/wallets`]   = newWallets;
+  u[`${PATH.users}/${uid}/riskState`] = riskState;
 
   u[`${PATH.transactions}/${txId}`] = {
-    txId,
-    uid,
-    cycleId,
-    type: "BET_LOSS",
-    amount: -stake,
-    currency: "UGX",
-    wallet: "activeAllocation",
+    txId, uid, cycleId, type: "BET_LOSS",
+    amount: -stake, currency: "UGX", wallet: "activeAllocation",
     previousBalance: wallets.activeAllocation,
     newBalance: newWallets.activeAllocation,
-    referenceId: betId,
-    status: "COMPLETED",
-    timestamp: now,
-    actor: adminUid,
-    note: `Lost @ ${odds}`
+    referenceId: betId, status: "COMPLETED",
+    timestamp: now, actor: adminUid, note: `Lost @ ${odds}`
   };
 
-  u[`${PATH.cycles}/${cycleId}/totalLosses`] =
-    (user.wallets?.totalLosses || 0) +
-    stake;
-
-  u[`${PATH.cycles}/${cycleId}/lossesCount`] =
-    (user.wallets?.lossesCount || 0) +
-    1;
+  u[`${PATH.cycles}/${cycleId}/totalLosses`] = (cycle.totalLosses || 0) + stake;
+  u[`${PATH.cycles}/${cycleId}/lossesCount`] = (cycle.lossesCount || 0) + 1;
 
   u[`${PATH.auditLogs}/${logId}`] = {
-    logId,
-    actor: adminUid,
-    actorRole: "admin",
-    action: "BET_LOSS",
-    target: betId,
-    previousValue: null,
-    newValue: {
-      stake,
-      odds
-    },
-    note: `Lost @ ${odds}`,
-    timestamp: Date.now()
+    logId, actor: adminUid, actorRole: "admin",
+    action: "BET_LOSS", target: betId,
+    previousValue: null, newValue: { stake, odds },
+    note: `Lost @ ${odds}`, timestamp: now
   };
 
   await update(ref(db), u);
@@ -870,68 +458,93 @@ export async function recordBetLoss({
   await notifyUser(uid, {
     type: "LOSS_RECORDED",
     title: "Bet result recorded",
-    body:
-      `A stake of UGX ${stake.toLocaleString()} was lost.`
+    body: `A stake of UGX ${stake.toLocaleString()} was lost.`
+  });
+}
+
+// ================================================================
+// ATOMIC WORKFLOW: COMPLETE WITHDRAWAL
+// Debits availableEarnings only when the admin marks COMPLETED.
+// ================================================================
+export async function completeWithdrawal({ withdrawal, adminUid }){
+  const fresh = await getOnce(`${PATH.withdrawals}/${withdrawal.wid}`);
+  if(!fresh) throw new Error("Withdrawal not found.");
+  if(fresh.status === "COMPLETED") throw new Error("Already completed.");
+  if(fresh.status === "REJECTED")  throw new Error("Cannot complete a rejected withdrawal.");
+
+  const user = await getOnce(`${PATH.users}/${withdrawal.uid}`);
+  if(!user) throw new Error("User record not found.");
+
+  const wallets = { ...ZERO_WALLETS, ...(user.wallets || {}) };
+  if(wallets.availableEarnings < withdrawal.amount){
+    throw new Error("Insufficient available earnings.");
+  }
+
+  const newWallets = {
+    ...wallets,
+    availableEarnings: wallets.availableEarnings - withdrawal.amount,
+    totalWithdrawn:    wallets.totalWithdrawn    + withdrawal.amount
+  };
+
+  const now = Date.now();
+  const txId  = push(ref(db, PATH.transactions)).key;
+  const logId = push(ref(db, PATH.auditLogs)).key;
+
+  const u = {};
+  u[`${PATH.users}/${withdrawal.uid}/wallets`] = newWallets;
+  u[`${PATH.withdrawals}/${withdrawal.wid}/status`] = "COMPLETED";
+  u[`${PATH.withdrawals}/${withdrawal.wid}/processedBy`] = adminUid;
+  u[`${PATH.withdrawals}/${withdrawal.wid}/processedAt`] = now;
+
+  u[`${PATH.transactions}/${txId}`] = {
+    txId, uid: withdrawal.uid, cycleId: user.currentCycleId || "",
+    type: "WITHDRAWAL", amount: -withdrawal.amount, currency: "UGX",
+    wallet: "availableEarnings",
+    previousBalance: wallets.availableEarnings,
+    newBalance: newWallets.availableEarnings,
+    referenceId: withdrawal.wid, status: "COMPLETED",
+    timestamp: now, actor: adminUid, note: "Withdrawal completed"
+  };
+  u[`${PATH.auditLogs}/${logId}`] = {
+    logId, actor: adminUid, actorRole: "admin",
+    action: "WITHDRAWAL_COMPLETED", target: withdrawal.wid,
+    previousValue: fresh.status, newValue: "COMPLETED",
+    note: `UGX ${withdrawal.amount}`, timestamp: now
+  };
+
+  await update(ref(db), u);
+
+  await notifyUser(withdrawal.uid, {
+    type: "WITHDRAWAL_COMPLETED",
+    title: "Withdrawal completed",
+    body: `UGX ${withdrawal.amount.toLocaleString()} has been processed.`
   });
 }
 
 // ================================================================
 // ATOMIC WORKFLOW: UPDATE SYSTEM CONFIG (versioned)
 // ================================================================
-export async function updateSystemConfig({
-  nextConfig,
-  adminUid,
-  reason=""
-}){
-  const prev =
-    (await getOnce(PATH.systemConfig)) || {};
-
-  const version =
-    (prev.version || 0) + 1;
-
+export async function updateSystemConfig({ nextConfig, adminUid, reason="" }){
+  const prev = (await getOnce(PATH.systemConfig)) || {};
+  const version = (prev.version || 0) + 1;
   const now = Date.now();
+  const next = { ...prev, ...nextConfig, version, updatedAt: now, updatedBy: adminUid };
 
-  const next = {
-    ...prev,
-    ...nextConfig,
-    version,
-    updatedAt: now,
-    updatedBy: adminUid
-  };
-
-  const histId =
-    push(ref(db, PATH.systemConfigHistory)).key;
-
-  const logId =
-    push(ref(db, PATH.auditLogs)).key;
+  const histId = push(ref(db, PATH.systemConfigHistory)).key;
+  const logId  = push(ref(db, PATH.auditLogs)).key;
 
   const u = {};
-
-  u[PATH.systemConfig] =
-    next;
-
+  u[PATH.systemConfig] = next;
   u[`${PATH.systemConfigHistory}/${histId}`] = {
-    changedAt: now,
-    changedBy: adminUid,
-    previous: prev,
-    next,
-    reason
+    changedAt: now, changedBy: adminUid, previous: prev, next, reason
   };
-
   u[`${PATH.auditLogs}/${logId}`] = {
-    logId,
-    actor: adminUid,
-    actorRole: "admin",
-    action: "SYSTEM_CONFIG_UPDATE",
-    target: "system_config",
-    previousValue: prev,
-    newValue: next,
-    note: reason,
-    timestamp: now
+    logId, actor: adminUid, actorRole: "admin",
+    action: "SYSTEM_CONFIG_UPDATE", target: "system_config",
+    previousValue: prev, newValue: next, note: reason, timestamp: now
   };
 
   await update(ref(db), u);
-
   return next;
 }
 
@@ -939,49 +552,26 @@ export async function updateSystemConfig({
 // POOL STATS (public, read-only)
 // ================================================================
 export async function computePoolStats(){
-  const [users, txs, bets] =
-    await Promise.all([
-      listAll(PATH.users),
-      listAll(PATH.transactions),
-      listAll(PATH.betRecords)
-    ]);
+  const [users, txs, bets] = await Promise.all([
+    listAll(PATH.users),
+    listAll(PATH.transactions),
+    listAll(PATH.betRecords)
+  ]);
 
-  let totalContrib = 0;
-  let totalReserve = 0;
-  let totalAvailable = 0;
-  let totalDistributed = 0;
-  let totalWithdrawn = 0;
-  let totalCompany = 0;
+  let totalContrib = 0, totalReserve = 0, totalAvailable = 0;
+  let totalDistributed = 0, totalWithdrawn = 0, totalCompany = 0;
+  let committed = 0;
 
   users.forEach(u => {
     const w = u.wallets || {};
-
-    totalContrib +=
-      w.totalContribution || 0;
-
-    totalReserve +=
-      w.protectedReserve || 0;
-
-    totalAvailable +=
-      w.availableEarnings || 0;
-
-    totalDistributed +=
-      w.totalEarningsGenerated || 0;
-
-    totalWithdrawn +=
-      w.totalWithdrawn || 0;
-
-    totalCompany +=
-      w.companyShareContributed || 0;
+    totalContrib     += w.totalContribution        || 0;
+    totalReserve     += w.protectedReserve         || 0;
+    totalAvailable   += w.availableEarnings        || 0;
+    totalDistributed += w.totalEarningsGenerated   || 0;
+    totalWithdrawn   += w.totalWithdrawn           || 0;
+    totalCompany     += w.companyShareContributed  || 0;
+    committed        += w.activeAllocation         || 0;
   });
-
-  const committed =
-    users.reduce(
-      (s, u) =>
-        s +
-        ((u.wallets || {}).activeAllocation || 0),
-      0
-    );
 
   return {
     totalContrib,
@@ -991,14 +581,8 @@ export async function computePoolStats(){
     totalWithdrawn,
     totalCompany,
     committed,
-    activeBets:
-      bets.filter(
-        b => b.status === "pending"
-      ).length,
-    completedBets:
-      bets.filter(
-        b => b.status === "completed"
-      ).length,
+    activeBets:    bets.filter(b => b.status === "pending").length,
+    completedBets: bets.filter(b => b.status === "completed").length,
     txCount: txs.length
   };
 }
