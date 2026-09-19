@@ -7,7 +7,27 @@
 <title>Dashboard — SURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
-<link rel="manifest" href="manifest.json">
+<style>
+  .wallet-grid{display:grid;gap:12px;grid-template-columns:1fr;margin-bottom:18px}
+  @media (min-width:640px){.wallet-grid{grid-template-columns:1fr 1fr}}
+  @media (min-width:900px){.wallet-grid{grid-template-columns:repeat(3,1fr)}}
+  .wallet-card{border-radius:var(--radius);padding:18px;color:#fff;position:relative;overflow:hidden}
+  .wallet-card::after{content:'';position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.06)}
+  .wallet-card.active{background:linear-gradient(135deg,#1e40af,#3b5fd9)}
+  .wallet-card.reserve{background:linear-gradient(135deg,#152552,#1c3068)}
+  .wallet-card.earnings{background:linear-gradient(135deg,#16a34a,#22c55e)}
+  .wallet-card .label{font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.75);font-weight:700;margin-bottom:6px}
+  .wallet-card .value{font-size:1.6rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+  .wallet-card .hint{font-size:.72rem;color:rgba(255,255,255,.7);margin-top:8px}
+  .risk-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:.72rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+  .risk-NORMAL{background:#dcfce7;color:#166534}
+  .risk-CAUTION{background:#fef3c7;color:#92400e}
+  .risk-DEFENSIVE{background:#ffedd5;color:#9a3412}
+  .risk-RECOVERY{background:#fee2e2;color:#991b1b}
+  .cycle-bar{height:8px;background:var(--gray-100);border-radius:999px;overflow:hidden;margin:10px 0}
+  .cycle-bar span{display:block;height:100%;background:linear-gradient(90deg,#d4af37,#1e40af);border-radius:999px;transition:width .5s}
+  .pending-deposit{background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid var(--amber);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:10px;display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+</style>
 </head>
 <body>
 <div id="header"></div>
@@ -15,67 +35,107 @@
 <section class="page-header">
   <div class="container">
     <div class="breadcrumb">Account</div>
-    <h1 id="greeting">Dashboard</h1>
-    <p id="subline">Track your contribution, reserve, and earnings.</p>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-      <span class="badge badge-active" id="riskBadge">—</span>
-      <span class="badge badge-void" id="verifyBadge">—</span>
-    </div>
+    <h1 id="greeting">Welcome</h1>
+    <p>Your contribution, reserve, earnings, and cycle status.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
+    <div id="maintenanceAlert"></div>
 
-    <div class="grid grid-4" style="margin-bottom:14px">
-      <div class="stat-card royal"><div class="stat-label">Total Contribution</div><div class="stat-value money" id="wTotal">—</div></div>
-      <div class="stat-card"><div class="stat-label">Protected Reserve</div><div class="stat-value money" id="wReserve">—</div></div>
-      <div class="stat-card green"><div class="stat-label">Available Earnings</div><div class="stat-value money money-pos" id="wEarnings">—</div></div>
-      <div class="stat-card"><div class="stat-label">Active Allocation</div><div class="stat-value money" id="wActive">—</div></div>
+    <div class="wallet-grid">
+      <div class="wallet-card active">
+        <div class="label">Active Allocation</div>
+        <div class="value" id="wActive">UGX 0</div>
+        <div class="hint">Allocated to current pool activity. Not withdrawable until settlement.</div>
+      </div>
+      <div class="wallet-card reserve">
+        <div class="label">Protected Reserve</div>
+        <div class="value" id="wReserve">UGX 0</div>
+        <div class="hint">Held under the platform's cycle rules. Not withdrawable until settlement.</div>
+      </div>
+      <div class="wallet-card earnings">
+        <div class="label">Available Earnings</div>
+        <div class="value" id="wEarnings">UGX 0</div>
+        <div class="hint">Eligible for withdrawal under published rules.</div>
+      </div>
     </div>
 
-    <div class="grid grid-4" style="margin-bottom:22px">
-      <div class="stat-card"><div class="stat-label">Total Earnings Generated</div><div class="stat-value money money-pos" id="wTotalEarnings">—</div></div>
-      <div class="stat-card"><div class="stat-label">Total Withdrawn</div><div class="stat-value money" id="wWithdrawn">—</div></div>
-      <div class="stat-card"><div class="stat-label">Current Cycle</div><div class="stat-value" id="wCycle" style="font-size:1rem">—</div><div class="stat-hint" id="wCycleHint">—</div></div>
-      <div class="stat-card"><div class="stat-label">Risk Level</div><div class="stat-value" id="wRisk" style="font-size:1rem">—</div><div class="stat-hint" id="wRiskHint">—</div></div>
+    <div class="grid grid-4" style="margin-bottom:18px">
+      <div class="stat-card royal">
+        <div class="stat-label">Total Contribution</div>
+        <div class="stat-value money" id="statContrib">UGX 0</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Total Earnings Generated</div>
+        <div class="stat-value money" id="statEarnings">UGX 0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Withdrawn</div>
+        <div class="stat-value money" id="statWithdrawn">UGX 0</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Risk Level</div>
+        <div class="stat-value" style="font-size:1rem"><span id="riskBadge" class="risk-badge risk-NORMAL">Normal</span></div>
+        <div class="stat-hint" id="riskHint">Reserve —</div>
+      </div>
     </div>
 
-    <div class="grid grid-4" style="margin-bottom:22px">
-      <a href="deposit.html"    class="btn btn-primary btn-block">Make Contribution</a>
+    <div class="card" id="cycleCard" style="margin-bottom:18px">
+      <div class="card-head">
+        <div>
+          <h3 style="margin:0">Current Cycle</h3>
+          <div class="card-sub" id="cycleSub">Loading…</div>
+        </div>
+        <span class="badge badge-void" id="cycleStatus">—</span>
+      </div>
+      <div id="cycleBody"></div>
+    </div>
+
+    <div id="pendingCard" style="display:none;margin-bottom:18px">
+      <div class="card">
+        <div class="card-head">
+          <h3 style="margin:0">Pending deposits</h3>
+          <a href="deposit.html" class="btn btn-sm btn-ghost">New contribution</a>
+        </div>
+        <div id="pendingList"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-4" style="margin-bottom:18px">
+      <a href="deposit.html" class="btn btn-primary btn-block">Make Contribution</a>
       <a href="withdrawals.html" class="btn btn-outline btn-block">Request Withdrawal</a>
       <a href="transactions.html" class="btn btn-outline btn-block">Ledger</a>
-      <a href="my-bets.html"     class="btn btn-outline btn-block">Allocations</a>
+      <a href="my-bets.html" class="btn btn-outline btn-block">My Bets</a>
     </div>
 
     <div class="card" style="margin-bottom:18px">
       <div class="card-head">
-        <div><h3 style="margin:0">Recent transactions</h3>
-          <div class="card-sub">Latest ledger entries on your account.</div></div>
+        <div>
+          <h3 style="margin:0">Recent transactions</h3>
+          <div class="card-sub">Latest ledger entries for your account.</div>
+        </div>
         <a href="transactions.html" class="btn btn-sm btn-ghost">View all</a>
       </div>
       <div class="responsive-table">
         <div class="table-wrap">
           <table>
             <thead><tr><th>Date</th><th>Type</th><th>Wallet</th><th>Amount</th><th>Balance after</th></tr></thead>
-            <tbody id="txBody"></tbody>
+            <tbody id="txBody"><tr><td colspan="5"><div class="skeleton sk-line"></div></td></tr></tbody>
           </table>
         </div>
       </div>
       <div class="mobile-list" id="txMobile"></div>
     </div>
 
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="card-head"><h3 style="margin:0">Cycle performance</h3></div>
-        <div id="cycleStats"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
+    <div class="card">
+      <div class="card-head">
+        <h3 style="margin:0">Recent activity</h3>
+        <a href="bets.html" class="btn btn-sm btn-ghost">All bets</a>
       </div>
-      <div class="card">
-        <div class="card-head"><h3 style="margin:0">Pending deposit submissions</h3><a href="deposit.html" class="btn btn-sm btn-ghost">New</a></div>
-        <div id="pendingSubs"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
-      </div>
+      <div id="betList"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div></div>
     </div>
-
   </div>
 </main>
 
@@ -83,110 +143,217 @@
 <div id="bottomNav"></div>
 
 <script type="module">
-  import { renderHeader, renderFooter, renderBottomNav, $, formatUGX, formatDateTime,
-           statusBadge, emptyState, esc } from "./js/ui.js";
-  import { requireAuth, currentIsAdmin } from "./js/auth.js";
-  import { watch, listBy, listAll, PATH } from "./js/database.js";
+  import { renderHeader, renderFooter, renderBottomNav, $,
+           formatUGX, formatDate, formatDateTime, statusBadge,
+           emptyState, esc } from "./js/ui.js";
+  import { requireAuth } from "./js/auth.js";
+  import { watch, listBy, PATH } from "./js/database.js";
+  import { loadConfig } from "./js/config.js";
+  import { calculateReservePercent, calculateRiskLevel } from "./js/calc.js";
 
   const profile = await requireAuth("login.html");
-  const isAdmin = currentIsAdmin();
-  renderHeader({ user: profile, isAdmin });
+  renderHeader({ user:profile, isAdmin:profile.role === "admin" });
   renderFooter();
-  renderBottomNav({ user: profile, isAdmin });
+  renderBottomNav({ user:profile, isAdmin:profile.role === "admin" });
 
-  $("#greeting").textContent = `Welcome, ${(profile.name || "").split(" ")[0] || "there"}`;
+  $("#greeting").textContent = `Welcome, ${(profile.name || "User").split(" ")[0]}`;
 
-  function paintUser(u){
-    const w = u.wallets || {};
-    $("#wTotal").textContent    = formatUGX(w.totalContribution || 0);
-    $("#wReserve").textContent  = formatUGX(w.protectedReserve || 0);
-    $("#wEarnings").textContent = formatUGX(w.availableEarnings || 0);
-    $("#wActive").textContent   = formatUGX(w.activeAllocation || 0);
-    $("#wTotalEarnings").textContent = formatUGX(w.totalEarningsGenerated || 0);
-    $("#wWithdrawn").textContent = formatUGX(w.totalWithdrawn || 0);
+  const config = await loadConfig();
 
-    const risk = u.riskState || { level: "NORMAL", reservePercent: 100 };
-    const rEl = $("#riskBadge");
-    const rColors = { NORMAL: "badge-active", CAUTION: "badge-pending", DEFENSIVE: "badge-pending", RECOVERY: "badge-suspended" };
-    rEl.className = "badge " + (rColors[risk.level] || "badge-void");
-    rEl.textContent = "RISK: " + risk.level;
-
-    const vEl = $("#verifyBadge");
-    const v = u.verificationStatus || "unverified";
-    vEl.className = "badge " + (v === "verified" ? "badge-active" : "badge-void");
-    vEl.textContent = v.toUpperCase();
-
-    $("#wRisk").textContent = risk.level;
-    $("#wRiskHint").textContent = `Reserve ${(risk.reservePercent || 0).toFixed(1)}%`;
+  if(config.maintenanceMode){
+    $("#maintenanceAlert").innerHTML = `
+      <div class="alert alert-warn" style="margin-bottom:18px">
+        <span>🔧</span>
+        <div>The platform is currently in maintenance mode. Deposits and withdrawals may be paused.</div>
+      </div>`;
   }
-  paintUser(profile);
 
-  watch(`${PATH.users}/${profile.uid}`, u => { if(u) paintUser({ uid: profile.uid, ...u }); });
+  const set = (id, v)=>{ const el = document.getElementById(id); if(el) el.textContent = v; };
 
-  // Current cycle
-  watch(`${PATH.users}/${profile.uid}/currentCycleId`, async (cid)=>{
-    if(!cid){ $("#wCycle").textContent = "No active cycle"; $("#wCycleHint").textContent = "Contribute to begin"; return; }
-    const c = await watch(`${PATH.cycles}/${cid}`, (cycle)=>{
-      if(!cycle) return;
-      const days = Math.max(1, Math.min(30, Math.floor((Date.now() - cycle.startDate) / 86400000) + 1));
-      const left = Math.max(0, Math.ceil((cycle.endDate - Date.now()) / 86400000));
-      $("#wCycle").textContent = `Day ${days} / 30`;
-      $("#wCycleHint").textContent = `${left} days remaining`;
+  function paintWallets(u){
+    const w = u.wallets || {};
+    set("wActive",   formatUGX(w.activeAllocation   || 0));
+    set("wReserve",  formatUGX(w.protectedReserve   || 0));
+    set("wEarnings", formatUGX(w.availableEarnings  || 0));
+    set("statContrib",   formatUGX(w.totalContribution       || 0));
+    set("statEarnings",  formatUGX(w.totalEarningsGenerated  || 0));
+    set("statWithdrawn", formatUGX(w.totalWithdrawn          || 0));
 
-      $("#cycleStats").innerHTML = `
-        <div class="detail-row"><span class="k">Starting contribution</span><span class="v money">${formatUGX(cycle.startingContribution || 0)}</span></div>
-        <div class="detail-row"><span class="k">Current reserve</span><span class="v money">${formatUGX(cycle.currentReserve || 0)}</span></div>
-        <div class="detail-row"><span class="k">Available earnings</span><span class="v money money-pos">${formatUGX(cycle.availableEarnings || 0)}</span></div>
-        <div class="detail-row"><span class="k">Wins / Losses</span><span class="v">${cycle.winsCount || 0} / ${cycle.lossesCount || 0}</span></div>
-        <div class="detail-row"><span class="k">Total company share</span><span class="v money">${formatUGX(cycle.totalCompanyShare || 0)}</span></div>
-        <div class="detail-row"><span class="k">Max drawdown</span><span class="v money money-neg">${formatUGX(cycle.maxDrawdown || 0)}</span></div>`;
+    const reservePct = calculateReservePercent(
+      w.protectedReserve || 0,
+      w.activeAllocation || 0
+    );
+    const level = calculateRiskLevel(reservePct, config);
+    const badge = $("#riskBadge");
+    badge.className = `risk-badge risk-${level}`;
+    badge.textContent = level;
+    set("riskHint", `Reserve ${reservePct.toFixed(1)}%`);
+  }
+  paintWallets(profile);
+
+  function emptyCycle(message, sub){
+    $("#cycleSub").textContent = sub;
+    $("#cycleBody").innerHTML = emptyState("📅", message, "Your cycle begins when your first contribution is approved.");
+    $("#cycleStatus").textContent = "None";
+    $("#cycleStatus").className = "badge badge-void";
+  }
+
+  function paintCycle(c){
+    const now = Date.now();
+    const start = c.startDate || now;
+    const end = c.endDate || (start + config.cycleDays * 86400000);
+    const total = end - start;
+    const elapsed = Math.max(0, Math.min(total, now - start));
+    const pct = total > 0 ? (elapsed / total) * 100 : 0;
+    const daysCompleted = Math.floor(elapsed / 86400000) + 1;
+    const daysLeft = Math.max(0, Math.ceil((end - now) / 86400000));
+
+    $("#cycleStatus").textContent = c.status || "ACTIVE";
+    $("#cycleStatus").className = "badge " + (c.status === "ACTIVE" ? "badge-active" : "badge-completed");
+    $("#cycleSub").textContent =
+      `Day ${Math.min(daysCompleted, config.cycleDays)} / ${config.cycleDays} · ${daysLeft} days remaining`;
+
+    $("#cycleBody").innerHTML = `
+      <div class="cycle-bar"><span style="width:${pct.toFixed(1)}%"></span></div>
+      <div class="grid grid-4" style="margin-top:14px">
+        <div>
+          <div class="stat-label">Starting Contribution</div>
+          <div class="money" style="font-weight:700">${formatUGX(c.startingContribution || 0)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Current Reserve</div>
+          <div class="money" style="font-weight:700">${formatUGX(c.currentReserve || 0)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Available Earnings</div>
+          <div class="money money-pos" style="font-weight:700">${formatUGX(c.availableEarnings || 0)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Wins / Losses</div>
+          <div class="money" style="font-weight:700">
+            <span class="money-pos">${c.winsCount || 0}</span> / <span class="money-neg">${c.lossesCount || 0}</span>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-4" style="margin-top:12px">
+        <div>
+          <div class="stat-label">Total Wins</div>
+          <div class="money money-pos" style="font-weight:700">${formatUGX(c.totalWins || 0)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Total Losses</div>
+          <div class="money money-neg" style="font-weight:700">${formatUGX(c.totalLosses || 0)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Company Share</div>
+          <div class="money" style="font-weight:700">${formatUGX(c.totalCompanyShare || 0)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Ends</div>
+          <div style="font-weight:700;font-size:.9rem">${formatDate(end)}</div>
+        </div>
+      </div>`;
+  }
+
+  let unwatchCycle = null;
+  function bindCycle(u){
+    const cycleId = u.currentCycleId;
+    if(!cycleId){
+      emptyCycle("No active cycle", "No active cycle");
+      if(unwatchCycle){ unwatchCycle(); unwatchCycle = null; }
+      return;
+    }
+    if(unwatchCycle){ unwatchCycle(); unwatchCycle = null; }
+    unwatchCycle = watch(`${PATH.cycles}/${cycleId}`, (c)=>{
+      if(!c){ emptyCycle("Cycle not found", "Cycle not found"); return; }
+      paintCycle(c);
     });
+  }
+
+  watch(`${PATH.users}/${profile.uid}`, (u)=>{
+    if(!u) return;
+    paintWallets({ uid: profile.uid, ...u });
+    bindCycle(u);
   });
 
-  // Recent transactions
-  const txs = (await listBy(PATH.transactions, "uid", profile.uid))
-    .sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 6);
+  // Pending deposits
+  function renderPending(list){
+    const pending = list.filter(d => d.status === "PENDING");
+    const card = $("#pendingCard");
+    if(!pending.length){ card.style.display = "none"; return; }
+    card.style.display = "block";
+    $("#pendingList").innerHTML = pending.map(d => `
+      <div class="pending-deposit">
+        <div>
+          <div style="font-weight:700">${formatUGX(d.amount)}</div>
+          <div style="font-size:.78rem;color:#7c2d12">Ref: ${esc(d.paymentReference || "—")}</div>
+          <div style="font-size:.72rem;color:#9a3412">Submitted ${formatDateTime(d.submittedAt)}</div>
+        </div>
+        <span class="badge badge-pending">Awaiting approval</span>
+      </div>`).join("");
+  }
+  watch(PATH.depositSubmissions, (data)=>{
+    const all = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    renderPending(all.filter(d => d.uid === profile.uid));
+  });
 
-  if(txs.length){
-    $("#txBody").innerHTML = txs.map(t => `
+  // Transactions
+  function txRow(t){
+    return `
       <tr>
         <td>${formatDateTime(t.timestamp)}</td>
-        <td><span class="badge badge-void">${esc(t.type)}</span></td>
-        <td>${esc(t.wallet || "—")}</td>
-        <td class="money ${(t.amount || 0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount)}</td>
-        <td class="money">${t.newBalance != null ? formatUGX(t.newBalance) : "—"}</td>
-      </tr>`).join("");
-    $("#txMobile").innerHTML = txs.map(t => `
-      <div class="card" style="padding:14px">
-        <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:6px">
-          <span class="badge badge-void">${esc(t.type)}</span>
-          <span class="money ${(t.amount || 0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount)}</span>
-        </div>
-        <div style="font-size:.75rem;color:var(--gray-400)">${esc(t.wallet || "")} · ${formatDateTime(t.timestamp)}</div>
-      </div>`).join("");
-  } else {
-    $("#txBody").innerHTML = `<tr><td colspan="5">${emptyState("🧾","No transactions yet","Your ledger will appear here after your first approved contribution.")}</td></tr>`;
-    $("#txMobile").innerHTML = emptyState("🧾","No transactions yet","Your ledger will appear here after your first approved contribution.");
+        <td><span class="badge badge-void">${esc(t.type || "")}</span></td>
+        <td style="font-size:.8rem;color:var(--gray-600)">${esc((t.wallet||"").replace(/([A-Z])/g," $1").trim())}</td>
+        <td class="money ${(t.amount||0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount || 0)}</td>
+        <td class="money">${formatUGX(t.newBalance || 0)}</td>
+      </tr>`;
   }
+  function txCard(t){
+    return `
+      <div class="card" style="padding:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span class="badge badge-void">${esc(t.type || "")}</span>
+          <span class="money ${(t.amount||0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount || 0)}</span>
+        </div>
+        <div style="font-size:.78rem;color:var(--gray-600)">${esc((t.wallet||"").replace(/([A-Z])/g," $1").trim())}</div>
+        <div style="font-size:.72rem;color:var(--gray-400);margin-top:4px">${formatDateTime(t.timestamp)}</div>
+      </div>`;
+  }
+  function paintTxs(list){
+    const recent = list.sort((a,b)=> (b.timestamp||0)-(a.timestamp||0)).slice(0,6);
+    if(!recent.length){
+      $("#txBody").innerHTML = `<tr><td colspan="5">${emptyState("🧾","No transactions yet","Your ledger will appear here after your first approved contribution.")}</td></tr>`;
+      $("#txMobile").innerHTML = emptyState("🧾","No transactions yet","Your ledger will appear here after your first approved contribution.");
+      return;
+    }
+    $("#txBody").innerHTML = recent.map(txRow).join("");
+    $("#txMobile").innerHTML = recent.map(txCard).join("");
+  }
+  watch(PATH.transactions, (data)=>{
+    const all = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    paintTxs(all.filter(t => t.uid === profile.uid));
+  });
 
-  // Pending deposits
-  const subs = (await listBy(PATH.depositSubmissions, "uid", profile.uid))
-    .filter(s => s.status === "PENDING" || s.status === "PROCESSING")
-    .sort((a,b) => (b.submittedAt || 0) - (a.submittedAt || 0));
-
-  if(subs.length){
-    $("#pendingSubs").innerHTML = subs.map(s => `
+  // Recent bets
+  watch(PATH.betRecords, (data)=>{
+    const all = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    const list = all.sort((a,b)=> (b.createdAt||0)-(a.createdAt||0)).slice(0,4);
+    const el = $("#betList");
+    if(!list.length){ el.innerHTML = emptyState("🎯","No bets yet","Pool bets will appear here."); return; }
+    el.innerHTML = list.map(b => `
       <div class="detail-row">
         <div>
-          <div style="font-weight:600;font-size:.9rem">${formatUGX(s.amount)}</div>
-          <div style="font-size:.75rem;color:var(--gray-400)">Ref ${esc(s.paymentReference)}</div>
-          <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(s.submittedAt)}</div>
+          <div style="font-weight:600;font-size:.88rem">${esc(b.match || "—")}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${esc(b.market || "")} · Odds ${esc(String(b.odds||"—"))}</div>
         </div>
-        <div>${statusBadge(s.status)}</div>
+        <div style="text-align:right">
+          ${statusBadge(b.result || b.status)}
+          <div class="money ${(b.profitLoss||0) >= 0 ? "money-pos" : "money-neg"}" style="font-size:.78rem;margin-top:3px">
+            ${b.status === "completed" ? formatUGX(b.profitLoss||0) : formatUGX(b.plannedStake||0)}
+          </div>
+        </div>
       </div>`).join("");
-  } else {
-    $("#pendingSubs").innerHTML = emptyState("💵","No pending submissions","Your approvals will appear here.");
-  }
+  });
 </script>
 </body>
 </html>
