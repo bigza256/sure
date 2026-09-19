@@ -15,7 +15,7 @@
   <div class="container">
     <div class="breadcrumb">Admin / Bet Manager</div>
     <h1>Bet Manager</h1>
-    <p>Create and manage pool bets. Every change is logged.</p>
+    <p>Create pool bets, then record the result. WIN/LOSS distributes to user wallets.</p>
   </div>
 </section>
 
@@ -106,19 +106,22 @@
            formatUGX, formatDate, statusBadge, emptyState, esc,
            openModal, closeModal, confirmDialog } from "../js/ui.js";
   import { requireAdmin } from "../js/auth.js";
-  import { watch, updateItem, pushItem, logActivity,
-           listAll, PATH } from "../js/database.js";
+  import { watch, updateItem, pushItem, logActivity, listAll,
+           recordBetWin, recordBetLoss, PATH } from "../js/database.js";
+  import { loadConfig } from "../js/config.js";
 
   const admin = await requireAdmin();
   renderHeader({ user:admin, isAdmin:true });
   renderFooter();
   renderBottomNav({ user:admin, isAdmin:true });
 
+  const config = await loadConfig();
+
   let bets = [];
   let filter = "pending";
 
   // ---- Create bet ----
-  $("#betForm").addEventListener("submit", async e=>{
+  $("#betForm").addEventListener("submit", async e => {
     e.preventDefault();
     const errBox = $("#formError");
     errBox.style.display = "none";
@@ -146,7 +149,7 @@
     }
 
     try{
-      const id = await pushItem(PATH.bets, {
+      const id = await pushItem(PATH.betRecords, {
         match,
         competition,
         matchDate: matchDate ? new Date(matchDate).getTime() : null,
@@ -221,7 +224,7 @@
           : ""}
       </div>`).join("");
 
-    document.querySelectorAll("[data-manage]").forEach(el => el.onclick = ()=> openManage(el.dataset.manage));
+    document.querySelectorAll("[data-manage]").forEach(el => el.onclick = () => openManage(el.dataset.manage));
   }
 
   // ---- Manage modal ----
@@ -262,61 +265,106 @@
       </div>
     `);
 
-    const gather = ()=>({
+    const gather = () => ({
       stake: Number($("#mStake").value),
       odds:  Number($("#mOdds").value),
       ref:   $("#mRef").value.trim(),
       evid:  $("#mEvid").value.trim()
     });
 
-    $("#mWin").onclick = async ()=>{
-      const {stake, odds, ref, evid} = gather();
-      if(stake < 0 || odds <= 1) return toast("Invalid stake/odds", "error");
-      await finalize(b.id, { stake, odds, ref, evid, result: "WIN",  profitLoss: stake*odds - stake });
+    $("#mWin").onclick = async () => {
+      const { stake, odds, ref, evid } = gather();
+      if(stake <= 0 || odds <= 1) return toast("Invalid stake/odds", "error");
+      await finalize(b.id, { stake, odds, ref, evid, result: "WIN", profitLoss: Math.round(stake*odds - stake) });
     };
-    $("#mLoss").onclick = async ()=>{
-      const {stake, odds, ref, evid} = gather();
-      if(stake < 0 || odds <= 1) return toast("Invalid stake/odds", "error");
+    $("#mLoss").onclick = async () => {
+      const { stake, odds, ref, evid } = gather();
+      if(stake <= 0 || odds <= 1) return toast("Invalid stake/odds", "error");
       await finalize(b.id, { stake, odds, ref, evid, result: "LOSS", profitLoss: -stake });
     };
-    $("#mVoid").onclick = async ()=>{
-      const {stake, odds, ref, evid} = gather();
+    $("#mVoid").onclick = async () => {
+      const { stake, odds, ref, evid } = gather();
       await finalize(b.id, { stake, odds, ref, evid, result: "VOID", profitLoss: 0 });
     };
   }
 
+  // ---- Finalize: distributes to user wallets via atomic workflows ----
   async function finalize(id, { stake, odds, ref, evid, result, profitLoss }){
     const b = bets.find(x => x.id === id);
     if(!b) return;
 
     const ok = await confirmDialog({
       title: `Mark as ${result}?`,
-      message: `Odds will be recorded as <strong>${odds}</strong> and P/L as <strong>${formatUGX(profitLoss)}</strong>. This is append-only and will be logged.`,
+      message: result === "VOID"
+        ? "This will close the bet with no balance changes."
+        : `This will distribute the ${result} to all users with active allocations and cannot be undone.`,
       confirmText: "Confirm"
     });
     if(!ok) return;
 
-    await updateItem(PATH.bets, id, {
-      actualStake: stake,
-      odds,
-      reference: ref || null,
-      evidence:  evid || null,
-      status: "completed",
-      result,
-      profitLoss,
-      closedAt: Date.now(),
-      closedBy: admin.uid
-    });
-
-    await logActivity({
-      adminId: admin.uid, action: `BET_${result}`, target: id,
-      prev: { odds: b.odds, status: b.status },
-      next: { odds, status: "completed", result, profitLoss },
-      note: b.match
-    });
-
     closeModal();
-    toast(`Bet marked ${result}`, "success");
+
+    try{
+      // Load all users with active allocation
+      const users = await listAll(PATH.users);
+      const active = users.filter(u =>
+        (u.wallets?.activeAllocation || 0) > 0 && u.currentCycleId
+      );
+
+      if(result === "WIN" || result === "LOSS"){
+        if(!active.length){
+          toast("No users with active allocations — bet closed without distribution", "warn");
+        } else {
+          const totalAlloc = active.reduce((s, u) => s + (u.wallets.activeAllocation || 0), 0);
+          for(const u of active){
+            const alloc = u.wallets.activeAllocation || 0;
+            const share = Math.floor(stake * (alloc / Math.max(1, totalAlloc)));
+            if(share <= 0) continue;
+            if(result === "WIN"){
+              await recordBetWin({
+                uid: u.uid, cycleId: u.currentCycleId,
+                stake: share, odds,
+                adminUid: admin.uid, config, betId: id
+              });
+            } else {
+              await recordBetLoss({
+                uid: u.uid, cycleId: u.currentCycleId,
+                stake: share, odds,
+                adminUid: admin.uid, config, betId: id
+              });
+            }
+          }
+          toast(`Bet ${result} — distributed to ${active.length} user(s)`, "success");
+        }
+      } else {
+        toast("Bet marked VOID", "success");
+      }
+
+      // Close the bet record
+      await updateItem(PATH.betRecords, id, {
+        actualStake: stake,
+        odds,
+        reference: ref || null,
+        evidence:  evid || null,
+        status: "completed",
+        result,
+        profitLoss,
+        closedAt: Date.now(),
+        closedBy: admin.uid
+      });
+
+      await logActivity({
+        adminId: admin.uid,
+        action: `BET_${result}`,
+        target: id,
+        prev: { odds: b.odds, status: b.status },
+        next: { odds, status: "completed", result, profitLoss },
+        note: b.match
+      });
+    }catch(err){
+      console.error(err);
+      toast(err.message || "Distribution failed", "error");
+    }
   }
 
   $("#tabs").addEventListener("click", e => {
@@ -326,8 +374,8 @@
     render();
   });
 
-  watch(PATH.bets, (data)=>{
-    bets = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+  watch(PATH.betRecords, (data) => {
+    bets = data ? Object.entries(data).map(([id, v]) => ({ id, ...v })) : [];
     render();
   });
 </script>
