@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1430">
-<title>Settings — Admin — SURE</title>
+<title>System Settings — Admin — SURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/style.css">
 </head>
@@ -14,80 +14,116 @@
 <section class="page-header">
   <div class="container">
     <div class="breadcrumb">Admin / Settings</div>
-    <h1>Platform Settings</h1>
-    <p>Payment details, contribution limits, and cycle configuration.</p>
+    <h1>System Configuration</h1>
+    <p>Every change is versioned and logged. Running cycles retain their original config.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
 
-    <div class="grid grid-2" style="margin-bottom:18px">
+    <div class="risk-notice" style="margin-bottom:18px">
+      <span>⚠️</span>
+      <div>Changing financial rules here affects <strong>new</strong> cycles only. Existing cycles keep the version they started with.</div>
+    </div>
+
+    <div id="saveError" class="alert alert-error" style="display:none"></div>
+    <div id="saveOk" class="alert alert-success" style="display:none"></div>
+
+    <div class="grid grid-2">
 
       <div class="card">
-        <h3 style="margin-bottom:6px">Payment instructions</h3>
-        <p class="card-sub" style="margin-bottom:16px">Shown to users on the deposit page.</p>
-        <div id="payErr" class="alert alert-error"   style="display:none"></div>
-        <div id="payOk"  class="alert alert-success" style="display:none"></div>
-        <form id="payForm">
+        <h3 style="margin-bottom:12px">Financial engine</h3>
+        <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Mobile Money recipient name</label>
-            <input class="form-control" id="pMomoName" placeholder="e.g. SURE Collections">
+            <label class="form-label">Active allocation %</label>
+            <input class="form-control" id="fAlloc" type="number" min="0" max="100" step="0.1">
           </div>
           <div class="form-group">
-            <label class="form-label">Mobile Money number</label>
-            <input class="form-control" id="pMomoNumber" placeholder="+256 7XX XXX XXX">
+            <label class="form-label">Reserve %</label>
+            <input class="form-control" id="fRes" type="number" min="0" max="100" step="0.1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Target odds</label>
+            <input class="form-control" id="fOdds" type="number" min="1.01" step="0.01">
           </div>
           <div class="form-group">
-            <label class="form-label">Official WhatsApp</label>
-            <input class="form-control" id="pWhatsapp" placeholder="+256 7XX XXX XXX">
+            <label class="form-label">Cycle days</label>
+            <input class="form-control" id="fDays" type="number" min="1" step="1">
           </div>
-          <div class="form-group">
-            <label class="form-label">Support email</label>
-            <input class="form-control" id="pEmail" type="email" placeholder="support@example.com">
-          </div>
-          <button class="btn btn-primary btn-block" id="savePay" type="submit">Save Payment Details</button>
-        </form>
-      </div>
-
-      <div>
-        <div class="card" style="margin-bottom:16px">
-          <h3 style="margin-bottom:6px">Contribution limits</h3>
-          <p class="card-sub" style="margin-bottom:16px">Applied when users submit contributions.</p>
-          <div id="limErr" class="alert alert-error"   style="display:none"></div>
-          <div id="limOk"  class="alert alert-success" style="display:none"></div>
-          <form id="limForm">
-            <div class="form-group">
-              <label class="form-label">Minimum contribution (UGX)</label>
-              <input class="form-control" id="pMin" type="number" min="0" step="1000">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Maximum contribution (UGX)</label>
-              <input class="form-control" id="pMax" type="number" min="0" step="1000">
-            </div>
-            <button class="btn btn-primary btn-block" id="saveLim" type="submit">Save Limits</button>
-          </form>
         </div>
 
-        <div class="card">
-          <h3 style="margin-bottom:6px">Cycle management</h3>
-          <p class="card-sub" style="margin-bottom:16px">Each cycle runs for 30 days.</p>
-          <div id="cycErr" class="alert alert-error" style="display:none"></div>
-          <div id="cycCurrent" style="margin-bottom:12px"></div>
-          <button class="btn btn-royal btn-block" id="startCycle" type="button">Start New Cycle (30 days)</button>
-          <button class="btn btn-outline btn-block" id="endCycle" type="button" style="margin-top:8px">End Active Cycle</button>
+        <h4 style="margin:14px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Profit split (must sum to 100)</h4>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Available earnings %</label><input class="form-control" id="fAvail" type="number" min="0" max="100" step="0.1"></div>
+          <div class="form-group"><label class="form-label">Company share %</label><input class="form-control" id="fComp" type="number" min="0" max="100" step="0.1"></div>
+          <div class="form-group"><label class="form-label">Reserve addition %</label><input class="form-control" id="fResAdd" type="number" min="0" max="100" step="0.1"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:12px">Contribution &amp; withdrawal limits</h3>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Min contribution (UGX)</label><input class="form-control" id="fMinC" type="number" min="0" step="1000"></div>
+          <div class="form-group"><label class="form-label">Max contribution (UGX)</label><input class="form-control" id="fMaxC" type="number" min="0" step="1000"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Min withdrawal (UGX)</label><input class="form-control" id="fMinW" type="number" min="0" step="1000"></div>
+          <div class="form-group"><label class="form-label">Max daily exposure (UGX)</label><input class="form-control" id="fMaxExp" type="number" min="0" step="1000"></div>
+        </div>
+
+        <h4 style="margin:14px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Designated Mobile Money</h4>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Recipient name</label><input class="form-control" id="fMomName" placeholder="e.g. SURE Collections"></div>
+          <div class="form-group"><label class="form-label">Number</label><input class="form-control" id="fMomNum" placeholder="+256 7XX XXX XXX"></div>
         </div>
       </div>
 
     </div>
 
-    <div class="card">
-      <h3 style="margin-bottom:6px">Production deployment notice</h3>
-      <p class="card-sub">
-        This is a demonstration build. Production deployment requires hardened Firebase Security Rules,
-        server-side validation of deposits/withdrawals, and an audited distribution engine. Do not
-        enable real payments until these are in place.
-      </p>
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin-bottom:12px">Risk thresholds</h3>
+      <div class="responsive-table">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Level</th><th>Min Reserve %</th><th>Max Allocation %</th></tr></thead>
+            <tbody id="riskBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin-bottom:12px">System status</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Environment</label>
+          <select class="form-control" id="fEnv">
+            <option value="DEVELOPMENT">DEVELOPMENT</option>
+            <option value="TEST">TEST</option>
+            <option value="PRODUCTION">PRODUCTION</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Maintenance mode</label>
+          <select class="form-control" id="fMaint">
+            <option value="false">Off</option>
+            <option value="true">On (blocks user actions)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-lg" id="saveBtn" type="button">Save Configuration</button>
+      <a href="activity.html" class="btn btn-outline btn-lg">View audit log</a>
+    </div>
+
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin-bottom:12px">Recent config versions</h3>
+      <div id="historyList"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
     </div>
 
   </div>
@@ -98,139 +134,139 @@
 
 <script type="module">
   import { renderHeader, renderFooter, renderBottomNav, $, toast,
-           formatDate } from "../js/ui.js";
+           formatDateTime, esc, emptyState, confirmDialog } from "../js/ui.js";
   import { requireAdmin } from "../js/auth.js";
-  import { watch, logActivity, pushItem, updateItem,
-           listAll, PATH } from "../js/database.js";
-  import { db, ref, set } from "../js/firebase.js";
+  import { loadSystemConfig, clearConfigCache, DEFAULTS } from "../js/config.js";
+  import { watch, updateSystemConfig, listAll, PATH } from "../js/database.js";
 
   const admin = await requireAdmin();
-  renderHeader({ user:admin, isAdmin:true });
+  renderHeader({ user: admin, isAdmin: true });
   renderFooter();
-  renderBottomNav({ user:admin, isAdmin:true });
+  renderBottomNav({ user: admin, isAdmin: true });
 
-  // ---- Load existing settings ----
-  watch(`${PATH.settings}/payment`, (p)=>{
-    if(!p) return;
-    $("#pMomoName").value   = p.momoName   || "";
-    $("#pMomoNumber").value = p.momoNumber || "";
-    $("#pWhatsapp").value   = p.whatsapp   || "";
-    $("#pEmail").value      = p.email      || "";
-  });
-  watch(`${PATH.settings}/limits`, (l)=>{
-    if(!l) return;
-    $("#pMin").value = l.min || 50000;
-    $("#pMax").value = l.max || 800000;
-  });
+  let cfg = await loadSystemConfig(true);
 
-  // ---- Save payment details ----
-  $("#payForm").addEventListener("submit", async e=>{
-    e.preventDefault();
-    const err = $("#payErr"), ok = $("#payOk");
-    err.style.display = "none"; ok.style.display = "none";
-    try{
-      await set(ref(db, `${PATH.settings}/payment`), {
-        momoName:   $("#pMomoName").value.trim(),
-        momoNumber: $("#pMomoNumber").value.trim(),
-        whatsapp:   $("#pWhatsapp").value.trim(),
-        email:      $("#pEmail").value.trim(),
-        updatedAt:  Date.now(),
-        updatedBy:  admin.uid
-      });
-      await logActivity({ adminId: admin.uid, action: "SETTINGS_PAYMENT_UPDATE" });
-      ok.textContent = "Payment details saved.";
-      ok.style.display = "flex";
-      toast("Saved", "success");
-    }catch(ex){
-      err.textContent = ex.message || "Failed";
-      err.style.display = "flex";
+  function paint(c){
+    cfg = c;
+    $("#fAlloc").value = c.activeAllocationPercent;
+    $("#fRes").value   = c.reservePercent;
+    $("#fOdds").value  = c.targetOdds;
+    $("#fDays").value  = c.cycleDays;
+    $("#fAvail").value = c.profitDistribution.availableEarningsPercent;
+    $("#fComp").value  = c.profitDistribution.companySharePercent;
+    $("#fResAdd").value= c.profitDistribution.reserveAdditionPercent;
+    $("#fMinC").value  = c.minContribution;
+    $("#fMaxC").value  = c.maxContribution;
+    $("#fMinW").value  = c.minWithdrawal;
+    $("#fMaxExp").value= c.maxDailyExposure;
+    $("#fMomName").value = c.designatedMobileMoney?.name || "";
+    $("#fMomNum").value  = c.designatedMobileMoney?.number || "";
+    $("#fEnv").value   = c.status || "PRODUCTION";
+    $("#fMaint").value = String(!!c.maintenanceMode);
+
+    $("#riskBody").innerHTML = ["NORMAL","CAUTION","DEFENSIVE","RECOVERY"].map(lvl => `
+      <tr>
+        <td><strong>${lvl}</strong></td>
+        <td><input class="form-control" data-risk="${lvl}" data-k="minReservePercent" type="number" min="0" max="100" value="${c.riskLevels[lvl].minReservePercent}"></td>
+        <td><input class="form-control" data-risk="${lvl}" data-k="maxAllocationPercent" type="number" min="0" max="100" value="${c.riskLevels[lvl].maxAllocationPercent}"></td>
+      </tr>`).join("");
+  }
+  paint(cfg);
+
+  watch(PATH.systemConfig, (c)=>{ if(c) paint(c); });
+
+  async function refreshHistory(){
+    const list = (await listAll(PATH.systemConfigHistory))
+      .sort((a,b) => (b.changedAt || 0) - (a.changedAt || 0)).slice(0, 10);
+    const el = $("#historyList");
+    if(!list.length){ el.innerHTML = emptyState("📜","No version history yet","Your first save will appear here."); return; }
+    el.innerHTML = list.map(h => `
+      <div class="detail-row">
+        <div>
+          <div style="font-weight:600;font-size:.88rem">v${h.next?.version || "?"}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">${formatDateTime(h.changedAt)}</div>
+          <div style="font-size:.72rem;color:var(--gray-400)">${esc(h.reason || "")}</div>
+        </div>
+        <div style="font-size:.75rem;color:var(--gray-400)">${esc(h.changedBy || "")}</div>
+      </div>`).join("");
+  }
+  refreshHistory();
+  watch(PATH.systemConfigHistory, ()=> refreshHistory());
+
+  $("#saveBtn").onclick = async ()=>{
+    const errBox = $("#saveError"), okBox = $("#saveOk");
+    errBox.style.display = "none"; okBox.style.display = "none";
+
+    const next = {
+      activeAllocationPercent: Number($("#fAlloc").value),
+      reservePercent: Number($("#fRes").value),
+      targetOdds: Number($("#fOdds").value),
+      cycleDays: Number($("#fDays").value),
+      minContribution: Number($("#fMinC").value),
+      maxContribution: Number($("#fMaxC").value),
+      minWithdrawal: Number($("#fMinW").value),
+      maxDailyExposure: Number($("#fMaxExp").value),
+      designatedMobileMoney: {
+        ...(cfg.designatedMobileMoney || {}),
+        name: $("#fMomName").value.trim(),
+        number: $("#fMomNum").value.trim(),
+        updatedAt: Date.now(),
+        version: ((cfg.designatedMobileMoney?.version) || 0) + 1
+      },
+      profitDistribution: {
+        availableEarningsPercent: Number($("#fAvail").value),
+        companySharePercent: Number($("#fComp").value),
+        reserveAdditionPercent: Number($("#fResAdd").value)
+      },
+      riskLevels: {
+        NORMAL:    { minReservePercent: Number($(`[data-risk="NORMAL"][data-k="minReservePercent"]`).value),    maxAllocationPercent: Number($(`[data-risk="NORMAL"][data-k="maxAllocationPercent"]`).value) },
+        CAUTION:   { minReservePercent: Number($(`[data-risk="CAUTION"][data-k="minReservePercent"]`).value),   maxAllocationPercent: Number($(`[data-risk="CAUTION"][data-k="maxAllocationPercent"]`).value) },
+        DEFENSIVE: { minReservePercent: Number($(`[data-risk="DEFENSIVE"][data-k="minReservePercent"]`).value), maxAllocationPercent: Number($(`[data-risk="DEFENSIVE"][data-k="maxAllocationPercent"]`).value) },
+        RECOVERY:  { minReservePercent: Number($(`[data-risk="RECOVERY"][data-k="minReservePercent"]`).value),  maxAllocationPercent: Number($(`[data-risk="RECOVERY"][data-k="maxAllocationPercent"]`).value) }
+      },
+      status: $("#fEnv").value,
+      maintenanceMode: $("#fMaint").value === "true"
+    };
+
+    // Validations
+    const sum = next.profitDistribution.availableEarningsPercent +
+                next.profitDistribution.companySharePercent +
+                next.profitDistribution.reserveAdditionPercent;
+    if(Math.abs(sum - 100) > 0.01){
+      errBox.textContent = `Profit split must sum to 100 (currently ${sum}).`;
+      errBox.style.display = "flex"; return;
     }
-  });
-
-  // ---- Save limits ----
-  $("#limForm").addEventListener("submit", async e=>{
-    e.preventDefault();
-    const err = $("#limErr"), ok = $("#limOk");
-    err.style.display = "none"; ok.style.display = "none";
-
-    const min = Number($("#pMin").value);
-    const max = Number($("#pMax").value);
-    if(!min || !max || min <= 0 || max < min){
-      err.textContent = "Invalid range. Max must be ≥ min.";
-      err.style.display = "flex"; return;
+    if(next.activeAllocationPercent + next.reservePercent !== 100){
+      errBox.textContent = "Active allocation % and reserve % must sum to 100.";
+      errBox.style.display = "flex"; return;
     }
-    try{
-      await set(ref(db, `${PATH.settings}/limits`), {
-        min, max, updatedAt: Date.now(), updatedBy: admin.uid
-      });
-      await logActivity({
-        adminId: admin.uid, action: "SETTINGS_LIMITS_UPDATE",
-        prev: null, next: { min, max }
-      });
-      ok.textContent = "Limits saved.";
-      ok.style.display = "flex";
-      toast("Saved", "success");
-    }catch(ex){
-      err.textContent = ex.message || "Failed";
-      err.style.display = "flex";
+    if(next.minContribution > next.maxContribution){
+      errBox.textContent = "Min contribution cannot exceed max contribution.";
+      errBox.style.display = "flex"; return;
     }
-  });
+    if(next.targetOdds <= 1){
+      errBox.textContent = "Target odds must be greater than 1.";
+      errBox.style.display = "flex"; return;
+    }
 
-  // ---- Cycle display ----
-  watch(PATH.cycles, (c)=>{
-    const list = c ? Object.entries(c).map(([id,v]) => ({ id, ...v })) : [];
-    const active = list.filter(x => x.status === "active")
-      .sort((a,b) => (b.startDate||0) - (a.startDate||0))[0];
-    const el = $("#cycCurrent");
-    if(!active){
-      el.innerHTML = `<div class="alert alert-warn"><span>ℹ️</span><div>No active cycle. Start one below.</div></div>`;
-      return;
-    }
-    const days = Math.min(30, Math.floor((Date.now() - (active.startDate||Date.now())) / 86400000));
-    el.innerHTML = `
-      <div class="detail-row"><span class="k">Started</span><span class="v">${formatDate(active.startDate)}</span></div>
-      <div class="detail-row"><span class="k">Ends</span><span class="v">${formatDate(active.endDate)}</span></div>
-      <div class="detail-row"><span class="k">Days completed</span><span class="v">${Math.max(1, days)} / 30</span></div>`;
-  });
-
-  // ---- Start / end cycle ----
-  $("#startCycle").onclick = async ()=>{
-    const err = $("#cycErr");
-    err.style.display = "none";
-    const active = (await listAll(PATH.cycles)).filter(x => x.status === "active");
-    if(active.length){
-      err.textContent = "End the current cycle first.";
-      err.style.display = "flex"; return;
-    }
-    const start = Date.now();
-    const end = start + 30 * 86400000;
-    const id = await pushItem(PATH.cycles, {
-      startDate: start,
-      endDate: end,
-      status: "active",
-      createdBy: admin.uid,
-      createdAt: Date.now()
+    const ok = await confirmDialog({
+      title: "Save configuration?",
+      message: "This will create a new config version. Running cycles keep their original version.",
+      confirmText: "Save"
     });
-    await logActivity({
-      adminId: admin.uid, action: "CYCLE_START", target: id,
-      next: { start, end }
-    });
-    toast("Cycle started", "success");
-  };
+    if(!ok) return;
 
-  $("#endCycle").onclick = async ()=>{
-    const active = (await listAll(PATH.cycles)).filter(x => x.status === "active");
-    if(!active.length){ toast("No active cycle", "warn"); return; }
-    for(const c of active){
-      await updateItem(PATH.cycles, c.id, {
-        status: "closed", closedAt: Date.now(), closedBy: admin.uid
-      });
-      await logActivity({
-        adminId: admin.uid, action: "CYCLE_END", target: c.id,
-        prev: "active", next: "closed"
-      });
+    const reason = prompt("Reason for this change (will be logged):") || "";
+    try{
+      await updateSystemConfig(next, admin.uid, reason);
+      clearConfigCache();
+      okBox.textContent = "Configuration saved. New cycles will use this version.";
+      okBox.style.display = "flex";
+      toast("Configuration saved", "success");
+    }catch(err){
+      errBox.textContent = err.message || "Save failed.";
+      errBox.style.display = "flex";
     }
-    toast("Cycle closed", "success");
   };
 </script>
 </body>
