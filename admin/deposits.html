@@ -8,9 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/style.css">
 <style>
-  .proof-img{max-width:100%;max-height:340px;border-radius:12px;border:1px solid var(--gray-200);object-fit:contain;background:#f4f6fb}
-  .verify-gate{background:var(--amber-bg);border:1px solid #fde68a;border-radius:10px;padding:12px;font-size:.85rem;color:#78350f;margin:12px 0}
-  .verify-gate.ok{background:var(--green-bg);border-color:#bbf7d0;color:#166534}
+  .proof-thumb{width:100%;max-width:140px;border-radius:8px;border:1px solid var(--gray-200);cursor:pointer;transition:.15s}
+  .proof-thumb.viewed{outline:3px solid var(--green);outline-offset:2px}
+  .confirm-row{display:flex;gap:10px;align-items:flex-start;margin:10px 0;font-size:.85rem;color:var(--gray-600)}
+  .designated-box{background:#f0f9ff;border:1px solid #bfdbfe;border-radius:var(--radius-sm);padding:12px;font-size:.82rem;margin:12px 0}
+  .designated-box strong{color:#1e40af;display:block;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -19,8 +21,8 @@
 <section class="page-header">
   <div class="container">
     <div class="breadcrumb">Admin / Deposits</div>
-    <h1>Deposit Management</h1>
-    <p>Verify each submission against the designated number before approving.</p>
+    <h1>Deposit Approval</h1>
+    <p>Verify each submission. Approving credits the user's wallets and creates the ledger records.</p>
   </div>
 </section>
 
@@ -28,7 +30,6 @@
   <div class="container">
     <div class="tabs" id="tabs">
       <button class="tab active" data-s="PENDING"  type="button">Pending</button>
-      <button class="tab"        data-s="PROCESSING" type="button">Processing</button>
       <button class="tab"        data-s="APPROVED" type="button">Approved</button>
       <button class="tab"        data-s="REJECTED" type="button">Rejected</button>
       <button class="tab"        data-s="ALL"      type="button">All</button>
@@ -37,7 +38,12 @@
     <div class="responsive-table">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Reference</th><th>Sender</th><th>Status</th><th></th></tr></thead>
+          <thead>
+            <tr>
+              <th>Submitted</th><th>User</th><th>Amount</th>
+              <th>Reference</th><th>Sender</th><th>Status</th><th></th>
+            </tr>
+          </thead>
           <tbody id="depBody"></tbody>
         </table>
       </div>
@@ -52,49 +58,46 @@
 <script type="module">
   import { renderHeader, renderFooter, renderBottomNav, $, toast,
            formatUGX, formatDateTime, statusBadge, emptyState, esc,
-           openModal, closeModal, confirmDialog } from "../js/ui.js";
+           confirmDialog, openModal, closeModal } from "../js/ui.js";
   import { requireAdmin } from "../js/auth.js";
-  import { loadSystemConfig } from "../js/config.js";
-  import { calculateActiveAllocation, calculateProtectedReserve,
-           calculateReservePercent, calculateRiskLevel } from "../js/calc.js";
-  import { listAll, watch, updateItem, pushItem, logActivity, notify,
-           PATH } from "../js/database.js";
-  import { writeLedgerEntry } from "../js/ledger.js";
-  import { db, ref, runTransaction } from "../js/firebase.js";
+  import { watch, approveDeposit, rejectDeposit, PATH } from "../js/database.js";
+  import { loadConfig } from "../js/config.js";
+  import { previewContribution } from "../js/calc.js";
 
   const admin = await requireAdmin();
-  renderHeader({ user: admin, isAdmin: true });
+  renderHeader({ user:admin, isAdmin:true });
   renderFooter();
-  renderBottomNav({ user: admin, isAdmin: true });
+  renderBottomNav({ user:admin, isAdmin:true });
 
+  const config = await loadConfig();
   let filter = "PENDING";
   let deposits = [];
-  const config = await loadSystemConfig();
+  const viewedProofs = new Set();
 
   function render(){
-    const sorted = deposits.slice().sort((a,b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+    const sorted = deposits.slice().sort((a,b)=> (b.submittedAt||0)-(a.submittedAt||0));
     const filtered = filter === "ALL" ? sorted : sorted.filter(d => d.status === filter);
-    const body = $("#depBody"), mob = $("#depMobile");
+    const body = $("#depBody");
+    const mob  = $("#depMobile");
 
     if(!filtered.length){
-      body.innerHTML = `<tr><td colspan="7">${emptyState("💵","No deposits","Nothing matches this filter.")}</td></tr>`;
-      mob.innerHTML = emptyState("💵","No deposits","Nothing matches this filter.");
+      body.innerHTML = `<tr><td colspan="7">${emptyState("💵","No submissions","Nothing matches this filter.")}</td></tr>`;
+      mob.innerHTML  = emptyState("💵","No submissions","Nothing matches this filter.");
       return;
     }
 
     body.innerHTML = filtered.map(d => `
       <tr>
         <td>${formatDateTime(d.submittedAt)}</td>
-        <td>${esc(d.userName || "—")}<div style="font-size:.75rem;color:var(--gray-400)">${esc(d.userEmail || "")}</div></td>
+        <td>
+          ${esc(d.userName || "—")}
+          <div style="font-size:.72rem;color:var(--gray-400)">${esc(d.userEmail || "")}</div>
+        </td>
         <td class="money">${formatUGX(d.amount)}</td>
         <td style="font-size:.8rem">${esc(d.paymentReference || "—")}</td>
         <td style="font-size:.8rem">${esc(d.senderPhone || "—")}</td>
         <td>${statusBadge(d.status)}</td>
-        <td>
-          ${(d.status === "PENDING" || d.status === "PROCESSING")
-            ? `<button class="btn btn-sm btn-royal" data-view="${d.id}" type="button">Review</button>`
-            : `<span style="font-size:.75rem;color:var(--gray-400)">${esc(d.reviewedBy || "—")}</span>`}
-        </td>
+        <td><button class="btn btn-sm btn-royal" data-review="${d.id}" type="button">Review</button></td>
       </tr>`).join("");
 
     mob.innerHTML = filtered.map(d => `
@@ -104,230 +107,122 @@
           ${statusBadge(d.status)}
         </div>
         <div style="font-size:.82rem">${esc(d.userName || "—")}</div>
-        <div style="font-size:.75rem;color:var(--gray-400)">Ref ${esc(d.paymentReference || "—")}</div>
+        <div style="font-size:.75rem;color:var(--gray-400)">Ref ${esc(d.paymentReference || "—")} · ${esc(d.senderPhone || "")}</div>
         <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(d.submittedAt)}</div>
-        ${(d.status === "PENDING" || d.status === "PROCESSING")
-          ? `<button class="btn btn-sm btn-royal" data-view="${d.id}" type="button" style="margin-top:10px;width:100%">Review</button>`
-          : ""}
+        <button class="btn btn-sm btn-royal" data-review="${d.id}" type="button" style="margin-top:10px;width:100%">Review</button>
       </div>`).join("");
 
-    document.querySelectorAll("[data-view]").forEach(b => b.onclick = ()=> openReview(b.dataset.view));
+    document.querySelectorAll("[data-review]").forEach(b => b.onclick = ()=> openReview(b.dataset.review));
   }
 
-  async function openReview(id){
+  function openReview(id){
     const d = deposits.find(x => x.id === id);
     if(!d) return;
-
-    const proofHtml = d.proofUrl
-      ? `<img src="${esc(d.proofUrl)}" alt="Proof of payment" class="proof-img" id="proofImg">`
-      : `<div style="padding:20px;text-align:center;color:var(--gray-400);border:1px dashed var(--gray-200);border-radius:10px">No proof uploaded</div>`;
+    const isPending = d.status === "PENDING";
+    const p = previewContribution(d.amount, config);
 
     openModal(`
-      <div class="modal-head"><h3>Review deposit</h3><button class="modal-close" data-close type="button">✕</button></div>
+      <div class="modal-head">
+        <h3>Review deposit</h3>
+        <button class="modal-close" data-close type="button">✕</button>
+      </div>
 
-      <div class="detail-row"><span class="k">User</span><span class="v">${esc(d.userName || "—")}</span></div>
-      <div class="detail-row"><span class="k">Email</span><span class="v">${esc(d.userEmail || "—")}</span></div>
-      <div class="detail-row"><span class="k">Amount claimed</span><span class="v money">${formatUGX(d.amount)}</span></div>
-      <div class="detail-row"><span class="k">Reference</span><span class="v">${esc(d.paymentReference)}</span></div>
+      <div class="detail-row"><span class="k">User</span><span class="v">${esc(d.userName || d.userEmail || d.uid)}</span></div>
+      <div class="detail-row"><span class="k">Amount</span><span class="v money">${formatUGX(d.amount)}</span></div>
+      <div class="detail-row"><span class="k">Reference</span><span class="v" style="font-size:.8rem">${esc(d.paymentReference || "—")}</span></div>
       <div class="detail-row"><span class="k">Sender phone</span><span class="v">${esc(d.senderPhone || "—")}</span></div>
-      <div class="detail-row"><span class="k">Designated MoMo shown to user</span><span class="v">${esc(d.designatedMobileMoneyNumber || "—")}</span></div>
-      <div class="detail-row"><span class="k">Submitted</span><span class="v">${formatDateTime(d.submittedAt)}</span></div>
-      <div class="detail-row"><span class="k">Current designated MoMo</span><span class="v">${esc((config.designatedMobileMoney || {}).number || "—")}</span></div>
+      <div class="detail-row"><span class="k">Submitted</span><span class="v" style="font-size:.82rem">${formatDateTime(d.submittedAt)}</span></div>
 
-      <div style="margin:14px 0">${proofHtml}</div>
-
-      <div class="verify-gate" id="gate">
-        <strong>Before approving, verify:</strong>
-        <label style="display:flex;gap:8px;margin-top:8px"><input type="checkbox" id="c1"> I have confirmed the payment was received on the designated MoMo number</label>
-        <label style="display:flex;gap:8px;margin-top:6px"><input type="checkbox" id="c2"> I have matched the reference and amount to the network confirmation</label>
-      </div>
-
-      <div class="modal-actions" style="flex-direction:column;gap:8px">
-        <div style="display:flex;gap:8px;width:100%">
-          <button class="btn btn-success" id="approveBtn" type="button" disabled style="flex:1">Approve</button>
-          <button class="btn btn-danger"  id="rejectBtn"  type="button" style="flex:1">Reject</button>
+      <div class="designated-box">
+        <strong>Designated MoMo shown to user</strong>
+        ${esc(d.designatedMobileMoneyNumber || "—")}
+        <div style="font-size:.72rem;color:#1e40af;margin-top:4px">
+          Confirm the money actually arrived on this number before approving.
         </div>
-        <button class="btn btn-outline" id="clarifyBtn" type="button">Request clarification</button>
       </div>
+
+      ${d.proofUrl
+        ? `<div style="margin:12px 0">
+             <div class="form-label">Proof of payment — click to open and mark as reviewed</div>
+             <img class="proof-thumb" id="proofImg" src="${esc(d.proofUrl)}" alt="Proof of payment">
+           </div>`
+        : `<div class="alert alert-warn" style="margin:12px 0"><span>ℹ️</span><div>No screenshot provided. Verify the reference against the Mobile Money statement before approving.</div></div>`}
+
+      <h4 style="margin:16px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Allocation preview</h4>
+      <div class="detail-row"><span class="k">Active allocation (${config.activeAllocationPercent}%)</span><span class="v money">${formatUGX(p.activeAllocation)}</span></div>
+      <div class="detail-row"><span class="k">Protected reserve (${config.reservePercent}%)</span><span class="v money">${formatUGX(p.protectedReserve)}</span></div>
+
+      ${isPending ? `
+        <label class="confirm-row">
+          <input type="checkbox" id="confirmProof">
+          <span>I have verified the payment reference / proof matches the submitted amount.</span>
+        </label>
+        <label class="confirm-row">
+          <input type="checkbox" id="confirmMomo">
+          <span>I have confirmed the money arrived on the designated Mobile Money number shown above.</span>
+        </label>
+
+        <div class="modal-actions" style="flex-direction:column;margin-top:16px">
+          <button class="btn btn-success btn-block" id="approveBtn" type="button" disabled>Approve &amp; credit user</button>
+          <button class="btn btn-danger btn-block" id="rejectBtn" type="button">Reject</button>
+        </div>
+      ` : `
+        <div style="margin-top:16px;font-size:.85rem;color:var(--gray-600)">
+          Reviewed by ${esc(d.reviewedBy || "—")} on ${formatDateTime(d.reviewedAt)}.
+          ${d.rejectionReason ? `<br><strong>Reason:</strong> ${esc(d.rejectionReason)}` : ""}
+        </div>`}
     `);
 
-    const enable = ()=>{ const ok = $("#c1").checked && $("#c2").checked;
-      $("#approveBtn").disabled = !ok;
-      $("#gate").classList.toggle("ok", ok); };
-    $("#c1").onchange = enable;
-    $("#c2").onchange = enable;
+    if(!isPending) return;
 
-    $("#approveBtn").onclick = ()=> approve(d.id);
-    $("#rejectBtn").onclick  = ()=> reject(d.id);
-    $("#clarifyBtn").onclick = ()=> clarify(d.id);
+    const approveBtn = $("#approveBtn");
+    const c1 = $("#confirmProof"), c2 = $("#confirmMomo");
+
+    const refresh = ()=>{
+      const proofOk = !d.proofUrl || viewedProofs.has(d.id);
+      approveBtn.disabled = !(c1.checked && c2.checked && proofOk);
+    };
+
+    const img = $("#proofImg");
+    img && img.addEventListener("click", ()=>{
+      viewedProofs.add(d.id);
+      img.classList.add("viewed");
+      refresh();
+    });
+    c1.addEventListener("change", refresh);
+    c2.addEventListener("change", refresh);
+    refresh();
+
+    approveBtn.onclick = ()=> doApprove(d);
+    $("#rejectBtn").onclick = ()=> doReject(d);
   }
 
-  // ---------- Atomic approval ----------
-  async function approve(depositId){
+  async function doApprove(d){
+    const ok = await confirmDialog({
+      title: "Approve deposit?",
+      message: `${formatUGX(d.amount)} will be credited to <strong>${esc(d.userName || d.userEmail)}</strong>. This creates the contribution, cycle, and ledger entries and cannot be undone.`,
+      confirmText: "Approve"
+    });
+    if(!ok) return;
     try{
-      // Step 1: atomically claim the deposit (PENDING → PROCESSING)
-      let claimed = null;
-      const depRef = ref(db, `${PATH.depositSubmissions}/${depositId}`);
-      const result = await runTransaction(depRef, (d)=>{
-        if(!d) return;
-        if(d.status !== "PENDING") return; // abort — someone else got it
-        d.status = "PROCESSING";
-        d.reviewedBy = admin.uid;
-        d.reviewedAt = Date.now();
-        claimed = d;
-        return d;
-      });
-      if(!result.committed || !claimed){
-        toast("This deposit is no longer pending.", "warn");
-        closeModal();
-        return;
-      }
-
-      const d = claimed;
-      const allocation = calculateActiveAllocation(d.amount, config);
-      const reserve    = calculateProtectedReserve(d.amount, config);
-
-      // Step 2: atomically credit wallets
-      const walletRef = ref(db, `${PATH.users}/${d.uid}/wallets`);
-      const walletResult = await runTransaction(walletRef, (w)=>{
-        if(!w) return;
-        const prevActive  = w.activeAllocation || 0;
-        const prevReserve = w.protectedReserve || 0;
-        const prevContrib = w.totalContribution || 0;
-        w.activeAllocation = prevActive + allocation;
-        w.protectedReserve = prevReserve + reserve;
-        w.totalContribution = prevContrib + d.amount;
-        return w;
-      });
-      if(!walletResult.committed){
-        // rollback: mark deposit back to PENDING so admin can retry
-        await updateItem(PATH.depositSubmissions, depositId, { status: "PENDING", reviewedBy: null, reviewedAt: null });
-        throw new Error("Could not credit wallets. Deposit reset to PENDING.");
-      }
-
-      const newWallets = walletResult.snapshot.val();
-
-      // Step 3: create contribution record
-      const contributionId = await pushItem(PATH.contributions, {
-        uid: d.uid,
-        cycleId: (await listAll(PATH.cycles)).find(c => c.uid === d.uid && c.status === "ACTIVE")?.id || "",
-        amount: d.amount,
-        depositId,
-        activeAllocation: allocation,
-        protectedReserve: reserve,
-        status: "ACTIVE",
-        createdAt: Date.now(),
-        approvedBy: admin.uid,
-        approvedAt: Date.now()
-      });
-
-      // Step 4: append immutable ledger entries
-      const ledgerBase = {
-        uid: d.uid, cycleId: "", actor: admin.uid,
-        referenceId: contributionId, currency: "UGX"
-      };
-      await writeLedgerEntry({
-        ...ledgerBase, type: "CONTRIBUTION",
-        amount: d.amount, wallet: "activeAllocation",
-        previousBalance: (newWallets.totalContribution || 0) - d.amount,
-        newBalance: newWallets.totalContribution,
-        note: "Contribution received"
-      });
-      await writeLedgerEntry({
-        ...ledgerBase, type: "ACTIVE_ALLOCATION",
-        amount: allocation, wallet: "activeAllocation",
-        previousBalance: (newWallets.activeAllocation || 0) - allocation,
-        newBalance: newWallets.activeAllocation,
-        note: `Active allocation ${config.activeAllocationPercent}%`
-      });
-      await writeLedgerEntry({
-        ...ledgerBase, type: "RESERVE_ADDITION",
-        amount: reserve, wallet: "protectedReserve",
-        previousBalance: (newWallets.protectedReserve || 0) - reserve,
-        newBalance: newWallets.protectedReserve,
-        note: `Protected reserve ${config.reservePercent}%`
-      });
-
-      // Step 5: recompute risk level
-      const reservePct = calculateReservePercent(newWallets.protectedReserve || 0, newWallets.activeAllocation || 0);
-      const riskLevel = calculateRiskLevel(reservePct, config);
-      await updateItem(PATH.users, d.uid, {
-        riskState: { level: riskLevel, reservePercent: reservePct, lastEvaluatedAt: Date.now() }
-      });
-
-      // Step 6: mark APPROVED
-      await updateItem(PATH.depositSubmissions, depositId, {
-        status: "APPROVED",
-        relatedContributionId: contributionId
-      });
-
-      // Step 7: notify + audit
-      await notify(d.uid, {
-        type: "DEPOSIT_APPROVED",
-        title: "Contribution received",
-        body: `Your contribution of ${formatUGX(d.amount)} has been approved.`,
-        meta: { depositId, contributionId }
-      });
-      await logActivity({
-        adminId: admin.uid, action: "APPROVE_DEPOSIT", target: depositId,
-        prev: "PROCESSING", next: "APPROVED",
-        note: `${formatUGX(d.amount)} for ${d.userEmail}`
-      });
-
-      toast("Deposit approved and credited", "success");
+      await approveDeposit({ deposit: d, adminUid: admin.uid, config });
+      toast("Deposit approved and user credited", "success");
       closeModal();
     }catch(err){
       toast(err.message || "Approval failed", "error");
     }
   }
 
-  async function reject(depositId){
-    const d = deposits.find(x => x.id === depositId);
-    const reason = prompt("Reason for rejection (visible to user):");
-    if(!reason || reason.trim().length < 3){ toast("Reason required", "warn"); return; }
-
-    const ok = await confirmDialog({
-      title: "Reject deposit?",
-      message: "The user will see this as rejected. No balance change will occur.",
-      confirmText: "Reject", danger: true
-    });
-    if(!ok) return;
-
-    await updateItem(PATH.depositSubmissions, depositId, {
-      status: "REJECTED",
-      reviewedBy: admin.uid,
-      reviewedAt: Date.now(),
-      rejectionReason: reason.trim()
-    });
-    await notify(d.uid, {
-      type: "DEPOSIT_REJECTED",
-      title: "Contribution rejected",
-      body: `Your submission of ${formatUGX(d.amount)} was rejected: ${reason.trim()}`,
-      meta: { depositId }
-    });
-    await logActivity({
-      adminId: admin.uid, action: "REJECT_DEPOSIT", target: depositId,
-      prev: "PENDING", next: "REJECTED", note: reason.trim()
-    });
-    toast("Deposit rejected", "warn");
-    closeModal();
-  }
-
-  async function clarify(depositId){
-    const d = deposits.find(x => x.id === depositId);
-    const msg = prompt("Clarification message for the user:");
-    if(!msg) return;
-    await notify(d.uid, {
-      type: "DEPOSIT_CLARIFICATION",
-      title: "Clarification needed",
-      body: msg,
-      meta: { depositId }
-    });
-    await logActivity({
-      adminId: admin.uid, action: "DEPOSIT_CLARIFICATION", target: depositId,
-      note: msg
-    });
-    toast("Clarification sent", "success");
+  async function doReject(d){
+    const reason = prompt("Reason for rejection (visible to the user):");
+    if(reason === null) return;
+    try{
+      await rejectDeposit({ deposit: d, adminUid: admin.uid, reason: reason.trim() });
+      toast("Deposit rejected", "warn");
+      closeModal();
+    }catch(err){
+      toast(err.message || "Rejection failed", "error");
+    }
   }
 
   $("#tabs").addEventListener("click", e => {
