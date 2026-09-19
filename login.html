@@ -7,16 +7,49 @@
 <title>Login — SURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<style>
+  .google-btn{
+    display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+    padding:13px 20px;border-radius:11px;background:#fff;
+    border:1.5px solid var(--gray-200);color:var(--navy-900);
+    font-weight:600;font-size:.95rem;transition:.18s;
+  }
+  .google-btn:hover{border-color:var(--gray-400);box-shadow:0 2px 8px rgba(0,0,0,.05)}
+  .google-btn:active{transform:scale(.98)}
+  .google-btn svg{flex:0 0 18px}
+  .divider{
+    display:flex;align-items:center;gap:12px;margin:18px 0;
+    color:var(--gray-400);font-size:.72rem;text-transform:uppercase;
+    letter-spacing:.6px;font-weight:600;
+  }
+  .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--gray-200)}
+</style>
 </head>
 <body>
 <div id="header"></div>
 <main class="auth-wrap">
   <div class="auth-card">
-    <div class="auth-logo"><span class="logo" style="color:var(--navy-900)"><span class="logo-mark">S</span>SU<span style="color:var(--gold-dark)">RE</span></span></div>
+    <div class="auth-logo">
+      <span class="logo" style="color:var(--navy-900)">
+        <span class="logo-mark">S</span>SU<span style="color:var(--gold-dark)">RE</span>
+      </span>
+    </div>
     <h1>Welcome back</h1>
     <p class="sub">Sign in to track your pool and bets.</p>
 
     <div id="formError" class="alert alert-error" style="display:none"></div>
+
+    <button type="button" class="google-btn" id="googleBtn">
+      <svg viewBox="0 0 48 48" width="18" height="18">
+        <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
+        <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/>
+        <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/>
+        <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/>
+      </svg>
+      Continue with Google
+    </button>
+
+    <div class="divider">or</div>
 
     <form id="loginForm" novalidate>
       <div class="form-group">
@@ -42,7 +75,7 @@
 
 <script type="module">
   import { renderHeader, renderFooter, toast, $ } from "./js/ui.js";
-  import { whenAuthReady, loginUser } from "./js/auth.js";
+  import { whenAuthReady, loginUser, loginWithGoogle } from "./js/auth.js";
 
   const existing = await whenAuthReady();
   if(existing){ location.href = existing.role === "admin" ? "admin/index.html" : "dashboard.html"; }
@@ -52,15 +85,42 @@
 
   const url = new URLSearchParams(location.search);
   if(url.get("suspended")){
-    const e = $("#formError"); e.textContent = "This account has been suspended. Contact support.";
+    const e = $("#formError");
+    e.textContent = "This account has been suspended. Contact support.";
     e.style.display = "flex";
   }
 
-  const form = $("#loginForm");
   const errBox = $("#formError");
-  const submit = $("#submitBtn");
   const showError = m => { errBox.textContent = m; errBox.style.display = "flex"; };
   const hideError = ()=> errBox.style.display = "none";
+
+  // --------- Google sign-in ---------
+  const gBtn = $("#googleBtn");
+  gBtn.addEventListener("click", async ()=>{
+    hideError();
+    gBtn.disabled = true;
+    gBtn.innerHTML = `<span class="spinner dark"></span> Signing in…`;
+    try{
+      const profile = await loginWithGoogle();
+      toast("Welcome " + (profile.name || "back"), "success");
+      location.href = profile.role === "admin" ? "admin/index.html" : "dashboard.html";
+    }catch(err){
+      const map = {
+        "auth/popup-closed-by-user": "Sign-in cancelled.",
+        "auth/popup-blocked": "Your browser blocked the pop-up. Allow pop-ups for this site and try again.",
+        "auth/operation-not-allowed": "Google sign-in is not enabled for this project yet.",
+        "auth/account-exists-with-different-credential": "An account with this email already exists. Sign in with your password instead.",
+        "auth/unauthorized-domain": "This domain is not authorized in Firebase. Contact the administrator."
+      };
+      showError(map[err.code] || err.message || "Google sign-in failed.");
+      gBtn.disabled = false;
+      gBtn.innerHTML = `<svg viewBox="0 0 48 48" width="18" height="18"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg> Continue with Google`;
+    }
+  });
+
+  // --------- Email sign-in ---------
+  const form = $("#loginForm");
+  const submit = $("#submitBtn");
 
   form.addEventListener("submit", async (e)=>{
     e.preventDefault();
