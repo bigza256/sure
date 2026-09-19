@@ -4,90 +4,111 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1430">
-<title>Contribute — SURE</title>
+<title>Make a Contribution — SURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
+<style>
+  .payment-box{background:#fff7ed;border:1.5px dashed #d97706;border-radius:var(--radius);padding:16px;text-align:center;margin-bottom:16px}
+  .payment-box .momo-num{font-size:1.4rem;font-weight:800;color:#7c2d12;letter-spacing:.5px;font-variant-numeric:tabular-nums;margin:6px 0}
+  .preview-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--gray-100);font-size:.88rem}
+  .preview-row:last-child{border-bottom:none}
+  .preview-row .k{color:var(--gray-600)}
+  .preview-row .v{font-weight:700}
+</style>
 </head>
 <body>
 <div id="header"></div>
 
 <section class="page-header">
   <div class="container">
-    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Contribute</div>
+    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Contribution</div>
     <h1>Make a Contribution</h1>
-    <p>Send payment to the designated number, then submit the reference for admin review.</p>
+    <p>Send your payment to the official Mobile Money number below, then submit your reference for verification.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
-
     <div class="risk-notice" style="margin-bottom:18px">
       <span>⚠️</span>
-      <div><strong>Important:</strong> Your balance is credited only after an administrator verifies your payment. Submitting this form does not credit your account.</div>
+      <div>
+        <strong>Only send money to the number shown on this page.</strong>
+        Do not send to any other number, even if someone contacts you claiming to be from SURE.
+        Your contribution is only credited after an administrator verifies it.
+      </div>
     </div>
 
-    <div class="grid grid-2" style="margin-bottom:18px">
-
+    <div class="grid grid-2">
       <div class="card">
-        <h3 style="margin-bottom:6px">Step 1 — Send payment</h3>
-        <p class="card-sub" style="margin-bottom:16px">Send your contribution to the designated number below.</p>
-        <div id="payBox">
-          <div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div>
+        <h3 style="margin-bottom:6px">Step 1 — Send your payment</h3>
+        <p class="card-sub" style="margin-bottom:14px">Send the exact amount to the number below.</p>
+
+        <div class="payment-box" id="paymentBox">
+          <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#9a3412">Official Mobile Money</div>
+          <div class="momo-num" id="momoNumber">Loading…</div>
+          <div style="font-size:.85rem;color:#7c2d12" id="momoName">—</div>
         </div>
-      </div>
 
-      <div class="card">
-        <h3 style="margin-bottom:6px">Step 2 — Submit reference</h3>
-        <p class="card-sub" style="margin-bottom:16px">After sending, submit the payment details here.</p>
+        <h3 style="margin:20px 0 6px">Step 2 — Submit verification</h3>
+        <p class="card-sub" style="margin-bottom:14px">After sending, submit your payment reference for admin approval.</p>
 
         <div id="formError" class="alert alert-error" style="display:none"></div>
         <div id="formSuccess" class="alert alert-success" style="display:none"></div>
 
         <form id="depForm" novalidate>
           <div class="form-group">
-            <label class="form-label">Amount sent (UGX)</label>
-            <input class="form-control" id="amount" type="number" min="50000" max="800000" step="1000" required placeholder="e.g. 200000">
-            <div class="form-hint" id="limitHint">Between UGX 50,000 and UGX 800,000</div>
+            <label class="form-label" for="amount">Amount (UGX)</label>
+            <input class="form-control" id="amount" type="number" required placeholder="e.g. 200000">
+            <div class="form-hint" id="amountHint">Min — · Max —</div>
           </div>
+
           <div class="form-group">
-            <label class="form-label">Mobile Money transaction reference</label>
-            <input class="form-control" id="reference" required placeholder="e.g. MP240115.1234.A56789">
+            <label class="form-label" for="reference">Mobile Money transaction reference</label>
+            <input class="form-control" id="reference" required placeholder="From your Mobile Money SMS" autocomplete="off">
           </div>
+
           <div class="form-group">
-            <label class="form-label">Sender phone number</label>
+            <label class="form-label" for="senderPhone">Phone number that sent the payment</label>
             <input class="form-control" id="senderPhone" type="tel" required placeholder="+256 7XX XXX XXX">
           </div>
+
           <div class="form-group">
-            <label class="form-label">Proof of payment (screenshot, optional)</label>
-            <input class="form-control" id="proof" type="file" accept="image/png,image/jpeg,image/webp">
-            <div class="form-hint">PNG / JPG / WEBP · Max 5 MB</div>
+            <label class="form-label" for="screenshot">Screenshot of payment (optional but speeds up approval)</label>
+            <input class="form-control" id="screenshot" type="file" accept="image/png,image/jpeg,image/webp">
+            <div class="form-hint">PNG/JPG/WEBP · Max 5 MB. A screenshot does not auto-approve your deposit.</div>
           </div>
 
-          <div class="card" id="previewCard" style="background:var(--gray-50);border:1px dashed var(--gray-200);margin:14px 0">
-            <div class="stat-label" style="margin-bottom:8px">What happens if approved</div>
-            <div class="detail-row"><span class="k">Protected Reserve (75%)</span><span class="v money" id="pvReserve">—</span></div>
-            <div class="detail-row"><span class="k">Active Allocation (25%)</span><span class="v money" id="pvActive">—</span></div>
-            <div class="detail-row"><span class="k">If odds 1.80 win</span><span class="v money-pos" id="pvWin">—</span></div>
-            <div class="form-hint" style="margin-top:8px">Illustrative — no guaranteed outcome. A bet can also lose.</div>
-          </div>
-
-          <label style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 16px;font-size:.83rem;color:var(--gray-600)">
+          <label style="display:flex;gap:10px;align-items:flex-start;margin:8px 0 18px;font-size:.85rem;color:var(--gray-600)">
             <input type="checkbox" id="attest" style="margin-top:3px">
-            <span>I confirm the reference and amount are accurate. I understand my balance will only update after admin approval.</span>
+            <span>I confirm I sent this exact amount to the Mobile Money number shown above and the reference is accurate.</span>
           </label>
 
-          <button class="btn btn-primary btn-block btn-lg" id="submitBtn">Submit for Review</button>
+          <button class="btn btn-primary btn-block btn-lg" id="submitBtn" type="submit">Submit for Approval</button>
         </form>
       </div>
 
-    </div>
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3 style="margin-bottom:12px">Allocation preview</h3>
+          <p class="card-sub" style="margin-bottom:12px">How your contribution is divided once approved.</p>
+          <div id="previewBody">
+            <div class="preview-row"><span class="k">Active allocation</span><span class="v">UGX 0</span></div>
+            <div class="preview-row"><span class="k">Protected reserve</span><span class="v">UGX 0</span></div>
+            <div class="preview-row"><span class="k">Target odds</span><span class="v">—</span></div>
+            <div class="preview-row"><span class="k">If the allocation wins</span><span class="v money-pos">+UGX 0</span></div>
+          </div>
+          <div class="form-hint" style="margin-top:12px">
+            Illustrative preview based on current platform rules. Not a guarantee of profit.
+            Actual results depend on the outcome of each bet.
+          </div>
+        </div>
 
-    <div class="card">
-      <div class="card-head"><h3 style="margin:0">My submissions</h3></div>
-      <div id="mySubs"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
+        <div class="card">
+          <h3 style="margin-bottom:12px">Your submissions</h3>
+          <div id="myList"><div class="skeleton sk-line"></div><div class="skeleton sk-line w60"></div></div>
+        </div>
+      </div>
     </div>
-
   </div>
 </main>
 
@@ -97,144 +118,161 @@
 <script type="module">
   import { renderHeader, renderFooter, renderBottomNav, $, toast,
            formatUGX, formatDateTime, statusBadge, emptyState, esc } from "./js/ui.js";
-  import { requireAuth, currentIsAdmin } from "./js/auth.js";
-  import { loadSystemConfig } from "./js/config.js";
+  import { requireAuth } from "./js/auth.js";
+  import { watch, listBy, createDepositSubmission, PATH } from "./js/database.js";
+  import { loadConfig } from "./js/config.js";
   import { previewContribution } from "./js/calc.js";
-  import { pushItem, listBy, watch, PATH } from "./js/database.js";
-  import { storage, sRef, uploadBytes, getDownloadURL } from "./js/firebase.js";
+  import { sRef, uploadBytes, getDownloadURL, storage } from "./js/firebase.js";
 
   const profile = await requireAuth("login.html");
-  const isAdmin = currentIsAdmin();
-  renderHeader({ user: profile, isAdmin });
+  renderHeader({ user:profile, isAdmin:profile.role === "admin" });
   renderFooter();
-  renderBottomNav({ user: profile, isAdmin });
+  renderBottomNav({ user:profile, isAdmin:profile.role === "admin" });
 
-  const config = await loadSystemConfig();
+  const config = await loadConfig();
 
-  // Display payment box
-  const mm = config.designatedMobileMoney || {};
-  if(mm.number){
-    $("#payBox").innerHTML = `
-      <div class="detail-row"><span class="k">Recipient name</span><span class="v">${esc(mm.name || "—")}</span></div>
-      <div class="detail-row"><span class="k">Mobile Money number</span><span class="v" style="font-size:1.05rem;color:var(--navy-900)">${esc(mm.number)}</span></div>
-      <div class="detail-row"><span class="k">Amount range</span><span class="v">${formatUGX(config.minContribution)} – ${formatUGX(config.maxContribution)}</span></div>
-      <div class="risk-notice" style="margin-top:12px"><span>ℹ️</span>
-        <div>After sending, take note of the <strong>transaction reference</strong> your network sends you, then complete Step 2.</div>
+  function paintPayment(){
+    const m = config.designatedMobileMoney || {};
+    const num = m.number || "";
+    const name = m.name || "";
+    if(!num){
+      $("#paymentBox").innerHTML = `<div class="alert alert-warn" style="margin:0">
+        <span>⚠️</span><div>Payment details have not been configured yet. Contact support before sending any money.</div>
       </div>`;
-  } else {
-    $("#payBox").innerHTML = `<div class="alert alert-warn"><span>⚠️</span>
-      <div>The designated Mobile Money number has not been configured yet. Please contact support before sending money.</div></div>`;
-  }
-
-  $("#limitHint").textContent = `Between ${formatUGX(config.minContribution)} and ${formatUGX(config.maxContribution)}`;
-
-  // Live preview
-  function updatePreview(){
-    const amt = Number($("#amount").value) || 0;
-    if(amt < config.minContribution || amt > config.maxContribution){
-      $("#pvReserve").textContent = "—";
-      $("#pvActive").textContent = "—";
-      $("#pvWin").textContent = "—";
       return;
     }
-    const p = previewContribution(amt, config);
-    $("#pvReserve").textContent = formatUGX(p.protectedReserve);
-    $("#pvActive").textContent  = formatUGX(p.activeAllocation);
-    $("#pvWin").textContent     = formatUGX(p.grossProfit);
+    $("#paymentBox").innerHTML = `
+      <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#9a3412">Official Mobile Money</div>
+      <div class="momo-num">${esc(num)}</div>
+      <div style="font-size:.85rem;color:#7c2d12">${esc(name)}</div>`;
   }
-  $("#amount").addEventListener("input", updatePreview);
+  paintPayment();
 
-  // Submit
+  watch(PATH.systemConfig, (c)=>{
+    if(!c) return;
+    Object.assign(config, c);
+    paintPayment();
+    $("#amountHint").textContent =
+      `Min ${formatUGX(config.minContribution)} · Max ${formatUGX(config.maxContribution)}`;
+  });
+
+  $("#amount").min = config.minContribution;
+  $("#amount").max = config.maxContribution;
+  $("#amountHint").textContent =
+    `Min ${formatUGX(config.minContribution)} · Max ${formatUGX(config.maxContribution)}`;
+
+  function renderPreview(amount){
+    if(!amount || amount < 1){
+      $("#previewBody").innerHTML = `
+        <div class="preview-row"><span class="k">Active allocation</span><span class="v">UGX 0</span></div>
+        <div class="preview-row"><span class="k">Protected reserve</span><span class="v">UGX 0</span></div>
+        <div class="preview-row"><span class="k">Target odds</span><span class="v">${config.targetOdds}</span></div>
+        <div class="preview-row"><span class="k">If the allocation wins</span><span class="v money-pos">+UGX 0</span></div>`;
+      return;
+    }
+    const p = previewContribution(amount, config);
+    $("#previewBody").innerHTML = `
+      <div class="preview-row"><span class="k">Active allocation (${config.activeAllocationPercent}%)</span><span class="v">${formatUGX(p.activeAllocation)}</span></div>
+      <div class="preview-row"><span class="k">Protected reserve (${config.reservePercent}%)</span><span class="v">${formatUGX(p.protectedReserve)}</span></div>
+      <div class="preview-row"><span class="k">Target odds</span><span class="v">${config.targetOdds}</span></div>
+      <div class="preview-row"><span class="k">If the allocation wins</span><span class="v money-pos">+${formatUGX(p.grossProfit)}</span></div>`;
+  }
+  $("#amount").addEventListener("input", ()=> renderPreview(Number($("#amount").value)));
+
   const errBox = $("#formError"), okBox = $("#formSuccess");
   const showErr = m => { errBox.textContent = m; errBox.style.display = "flex"; okBox.style.display = "none"; };
   const showOk  = m => { okBox.textContent = m;  okBox.style.display = "flex"; errBox.style.display = "none"; };
 
-  $("#depForm").addEventListener("submit", async e => {
+  $("#depForm").addEventListener("submit", async e=>{
     e.preventDefault();
     errBox.style.display = "none"; okBox.style.display = "none";
-
-    if(!mm.number) return showErr("Payment number not configured. Contact support.");
 
     const amount = Number($("#amount").value);
     const reference = $("#reference").value.trim();
     const senderPhone = $("#senderPhone").value.trim();
-    const file = $("#proof").files[0];
+    const file = $("#screenshot").files[0];
 
+    if(!config.designatedMobileMoney?.number){
+      return showErr("Payment details are not configured. Contact support.");
+    }
     if(!amount || amount < config.minContribution || amount > config.maxContribution){
       return showErr(`Amount must be between ${formatUGX(config.minContribution)} and ${formatUGX(config.maxContribution)}.`);
     }
-    if(!reference || reference.length < 4) return showErr("Please enter a valid transaction reference.");
-    if(!/^[+\d][\d\s-]{6,}$/.test(senderPhone)) return showErr("Please enter a valid sender phone number.");
-    if(!$("#attest").checked) return showErr("Please confirm the accuracy of your submission.");
-
-    // Duplicate reference check for this user
-    const mine = await listBy(PATH.depositSubmissions, "uid", profile.uid);
-    if(mine.some(s => (s.paymentReference || "").toLowerCase() === reference.toLowerCase())){
-      return showErr("You already submitted this reference.");
+    if(!reference || reference.length < 4){
+      return showErr("Please enter the Mobile Money transaction reference from your SMS.");
+    }
+    if(!/^[+\d][\d\s-]{6,}$/.test(senderPhone)){
+      return showErr("Please enter a valid phone number that sent the payment.");
+    }
+    if(!$("#attest").checked){
+      return showErr("Please confirm you sent the payment to the number shown above.");
     }
 
     const btn = $("#submitBtn");
     btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Submitting…`;
 
     try{
+      const mine = await listBy(PATH.depositSubmissions, "uid", profile.uid);
+      if(mine.some(d =>
+        d.status !== "REJECTED" &&
+        (d.paymentReference || "").toLowerCase() === reference.toLowerCase()
+      )){
+        throw new Error("This reference has already been submitted.");
+      }
+
       let proofUrl = "";
       if(file){
         if(file.size > 5 * 1024 * 1024) throw new Error("Screenshot exceeds 5 MB.");
-        const allowed = ["image/png","image/jpeg","image/webp"];
-        if(!allowed.includes(file.type)) throw new Error("Unsupported image type.");
-        const path = `deposit-proofs/${profile.uid}/${Date.now()}_${file.name}`;
+        if(!/^image\/(png|jpe?g|webp)$/.test(file.type)) throw new Error("Unsupported image type.");
+        const path = `deposit-screenshots/${profile.uid}/${Date.now()}_${file.name}`;
         const snap = await uploadBytes(sRef(storage, path), file);
         proofUrl = await getDownloadURL(snap.ref);
       }
 
-      await pushItem(PATH.depositSubmissions, {
+      await createDepositSubmission({
         uid: profile.uid,
         userName: profile.name,
         userEmail: profile.email,
         amount,
         currency: "UGX",
-        designatedMobileMoneyNumber: mm.number,
+        designatedMobileMoneyNumber: config.designatedMobileMoney.number,
         paymentReference: reference,
         senderPhone,
         proofUrl,
         status: "PENDING",
-        submittedAt: Date.now(),
-        reviewedAt: null,
-        reviewedBy: null,
-        rejectionReason: "",
-        relatedContributionId: null
+        submittedAt: Date.now()
       });
 
-      showOk("Submitted. An administrator will review your payment. Your balance is unchanged until approval.");
+      showOk("Submitted. Your contribution is pending administrator approval — you'll be notified once reviewed.");
       toast("Submission received", "success");
       e.target.reset();
-      updatePreview();
+      renderPreview(0);
     }catch(err){
       showErr(err.message || "Submission failed.");
     }finally{
-      btn.disabled = false; btn.textContent = "Submit for Review";
+      btn.disabled = false; btn.textContent = "Submit for Approval";
     }
   });
 
-  // My submissions list
-  async function refreshSubs(){
-    const list = (await listBy(PATH.depositSubmissions, "uid", profile.uid))
-      .sort((a,b) => (b.submittedAt || 0) - (a.submittedAt || 0));
-    const el = $("#mySubs");
-    if(!list.length){ el.innerHTML = emptyState("💵","No submissions yet","Your contributions will appear here."); return; }
-    el.innerHTML = list.map(s => `
+  watch(PATH.depositSubmissions, (data)=>{
+    const all = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    const mine = all.filter(d => d.uid === profile.uid)
+      .sort((a,b)=> (b.submittedAt||0)-(a.submittedAt||0));
+    const el = $("#myList");
+    if(!mine.length){
+      el.innerHTML = emptyState("💵","No submissions yet","Your contributions will appear here.");
+      return;
+    }
+    el.innerHTML = mine.map(d => `
       <div class="detail-row">
         <div>
-          <div style="font-weight:700;font-size:.92rem">${formatUGX(s.amount)}</div>
-          <div style="font-size:.75rem;color:var(--gray-400)">Ref ${esc(s.paymentReference)}</div>
-          <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(s.submittedAt)}</div>
-          ${s.rejectionReason ? `<div style="font-size:.72rem;color:var(--red);margin-top:3px">Reason: ${esc(s.rejectionReason)}</div>` : ""}
+          <div style="font-weight:700;font-size:.9rem">${formatUGX(d.amount)}</div>
+          <div style="font-size:.75rem;color:var(--gray-400)">Ref: ${esc(d.paymentReference || "—")}</div>
+          <div style="font-size:.72rem;color:var(--gray-400)">${formatDateTime(d.submittedAt)}</div>
         </div>
-        <div>${statusBadge(s.status)}</div>
+        <div>${statusBadge(d.status)}</div>
       </div>`).join("");
-  }
-  refreshSubs();
-  watch(PATH.depositSubmissions, ()=> refreshSubs());
+  });
 </script>
 </body>
 </html>
