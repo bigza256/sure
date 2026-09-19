@@ -58,7 +58,7 @@
       <div class="detail-row"><span class="k">Track contributions</span><span class="v">Every contribution recorded with its verification status</span></div>
       <div class="detail-row"><span class="k">Publish betting activity</span><span class="v">Pending and completed bets with actual odds, markets, and stakes</span></div>
       <div class="detail-row"><span class="k">Maintain a ledger</span><span class="v">Append-only transaction records for every balance change</span></div>
-      <div class="detail-row"><span class="k">Separate balances</span><span class="v">Available balance vs. reserve / committed funds, clearly distinguished</span></div>
+      <div class="detail-row"><span class="k">Separate wallets</span><span class="v">Active Allocation, Protected Reserve, Available Earnings — clearly distinguished</span></div>
       <div class="detail-row"><span class="k">Run 30-day cycles</span><span class="v">Cycle-by-cycle accounting based on actual realized results</span></div>
     </div>
 
@@ -68,15 +68,16 @@
         <li>We do not guarantee profits or any fixed return.</li>
         <li>We do not present hypothetical returns as if they were achieved.</li>
         <li>We do not approve deposits automatically — every submission is reviewed manually.</li>
+        <li>We do not claim a licence or regulatory status unless verified information is supplied by the administrator.</li>
       </ul>
     </div>
 
     <div class="card card-pad-lg" style="margin-bottom:18px">
       <h2 style="margin-bottom:12px">Terminology</h2>
       <p style="color:var(--gray-600);font-size:.92rem;margin-bottom:12px">
-        In this initial version, SURE uses the terms <strong>pool participants</strong> and
-        <strong>contributors</strong> rather than "shareholders", because the legal structure does not
-        currently support shareholder terminology.
+        SURE uses the terms <strong>pool participants</strong> and <strong>contributors</strong>
+        rather than "shareholders", because the legal structure does not currently support shareholder
+        terminology.
       </p>
       <div class="risk-notice">
         <span>⚠️</span>
@@ -88,9 +89,7 @@
     </div>
 
     <div class="card card-pad-lg">
-      <p style="color:var(--gray-600);font-size:.9rem;margin-top:12px">
-      </p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
         <a href="how-it-works.html" class="btn btn-royal">How It Works</a>
         <a href="risk-disclosure.html" class="btn btn-outline">Risk Disclosure</a>
         <a href="contact.html" class="btn btn-outline">Contact</a>
@@ -106,6 +105,7 @@
 <script type="module">
   import { renderHeader, renderFooter, renderBottomNav } from "./js/ui.js";
   import { whenAuthReady } from "./js/auth.js";
+
   const p = await whenAuthReady();
   renderHeader({ user:p, isAdmin:p?.role === "admin" });
   renderFooter();
