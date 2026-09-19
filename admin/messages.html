@@ -31,9 +31,9 @@
   <div class="container">
 
     <div class="tabs" id="tabs">
-      <button class="tab active" data-v="NEW"       type="button">New</button>
-      <button class="tab"        data-v="RESOLVED"  type="button">Resolved</button>
-      <button class="tab"        data-v="ALL"       type="button">All</button>
+      <button class="tab active" data-v="NEW"      type="button">New</button>
+      <button class="tab"        data-v="RESOLVED" type="button">Resolved</button>
+      <button class="tab"        data-v="ALL"      type="button">All</button>
     </div>
 
     <div id="list">
@@ -103,9 +103,13 @@
 
   async function setStatus(id, status){
     try{
-      await updateItem("contactMessages", id, { status, updatedAt: Date.now(), updatedBy: admin.uid });
+      await updateItem("contactMessages", id, {
+        status, updatedAt: Date.now(), updatedBy: admin.uid
+      });
       toast(`Marked ${status}`, "success");
-    }catch(err){ toast(err.message || "Failed", "error"); }
+    }catch(err){
+      toast(err.message || "Failed", "error");
+    }
   }
 
   async function del(id){
