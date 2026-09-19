@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Cycles — Admin — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Admin / Cycles</div>
+    <h1>Cycle Management</h1>
+    <p>Review active and completed cycles. Settle at cycle end based on realized results.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-s="ACTIVE"    type="button">Active</button>
+      <button class="tab"        data-s="COMPLETED" type="button">Completed</button>
+      <button class="tab"        data-s="ALL"       type="button">All</button>
+    </div>
+    <div id="list" class="grid" style="grid-template-columns:1fr;gap:14px"></div>
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
+           formatUGX, formatDate, formatDateTime, statusBadge,
+           emptyState, esc, confirmDialog, openModal, closeModal } from "../js/ui.js";
+  import { requireAdmin } from "../js/auth.js";
+  import { watch, listAll, PATH } from "../js/database.js";
+  import { settleCycle } from "../js/withdrawals.js";
+  import { calculateCycleSettlement } from "../js/calc.js";
+
+  const admin = await requireAdmin();
+  renderHeader({ user:admin, isAdmin:true });
+  renderFooter();
+  renderBottomNav({ user:admin, isAdmin:true });
+
+  let cycles = [];
+  let users = {};
+  let filter = "ACTIVE";
+
+  async function loadUsers(){
+    const list = await listAll(PATH.users);
+    users = {};
+    list.forEach(u => { users[u.uid] = u.name || u.email || u.uid; });
+  }
+  await loadUsers();
+
+  function render(){
+    const sorted = cycles.slice().sort((a,b) => (b.startDate||0) - (a.startDate||0));
+    const filtered = filter === "ALL" ? sorted : sorted.filter(c => c.status === filter);
+    const el = $("#list");
+    if(!filtered.length){
+      el.innerHTML = `<div class="card">${emptyState("📅","No cycles","Nothing matches this filter.")}</div>`;
+      return;
+    }
+    el.innerHTML = filtered.map(c => {
+      const now = Date.now();
+      const pct = Math.min(100, Math.max(0, ((now - (c.startDate||now)) / ((c.endDate||now) - (c.startDate||now))) * 100));
+      const daysDone = Math.max(1, Math.floor((now - (c.startDate||now)) / 86400000) + 1);
+      const daysLeft = Math.max(0, Math.ceil(((c.endDate||now) - now) / 86400000));
+      return `
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <h3 style="margin:0;font-size:1rem">${esc(users[c.uid] || c.uid)}</h3>
+            <div class="card-sub" style="font-size:.78rem">Started ${formatDate(c.startDate)} · Ends ${formatDate(c.endDate)} · v${c.configVersion || 1}</div>
+          </div>
+          ${statusBadge(c.status)}
+        </div>
+
+        ${c.status === "ACTIVE" ? `
+          <div class="cycle-bar" style="height:8px;background:var(--gray-100);border-radius:999px;overflow:hidden;margin:8px 0">
+            <span style="display:block;height:100%;width:${pct.toFixed(1)}%;background:linear-gradient(90deg,#d4af37,#1e40af)"></span>
+          </div>
+          <div style="font-size:.78rem;color:var(--gray-600);margin-bottom:12px">
+            Day ${daysDone} / 30 · ${daysLeft} days remaining
+          </div>` : `
+          <div style="font-size:.78rem;color:var(--gray-600);margin:8px 0 12px">
+            Settled ${formatDateTime(c.settledAt)}
+          </div>`}
+
+        <div class="grid grid-4">
+          <div><div class="stat-label">Starting</div><div class="money" style="font-weight:700">${formatUGX(c.startingContribution || 0)}</div></div>
+          <div><div class="stat-label">Reserve</div><div class="money" style="font-weight:700">${formatUGX(c.currentReserve || 0)}</div></div>
+          <div><div class="stat-label">Earnings</div><div class="money money-pos" style="font-weight:700">${formatUGX(c.availableEarnings || 0)}</div></div>
+          <div><div class="stat-label">W / L</div><div class="money" style="font-weight:700">
+            <span class="money-pos">${c.winsCount || 0}</span> / <span class="money-neg">${c.lossesCount || 0}</span>
+          </div></div>
+        </div>
+
+        ${c.status === "ACTIVE"
+          ? `<button class="btn btn-royal btn-sm" data-settle="${c.id}" type="button" style="margin-top:14px">Preview &amp; Settle</button>`
+          : c.finalSettlement
+            ? `<div class="detail-row" style="margin-top:12px">
+                 <span class="k">Final settlement</span>
+                 <span class="v money">${formatUGX(c.finalSettlement.finalSettlement || 0)}</span>
+               </div>`
+            : ""}
+      </div>`;
+    }).join("");
+
+    document.querySelectorAll("[data-settle]").forEach(b => b.onclick = ()=> openSettle(b.dataset.settle));
+  }
+
+  function openSettle(cycleId){
+    const c = cycles.find(x => x.id === cycleId);
+    if(!c) return;
+    const s = calculateCycleSettlement(c, {});
+    openModal(`
+      <div class="modal-head">
+        <h3>Settlement preview</h3>
+        <button class="modal-close" data-close type="button">✕</button>
+      </div>
+      <p style="font-size:.88rem;color:var(--gray-600);margin-bottom:14px">
+        ${esc(users[c.uid] || c.uid)} · started ${formatDate(c.startDate)}
+      </p>
+      <div class="detail-row"><span class="k">Starting contribution</span><span class="v money">${formatUGX(s.startingContribution)}</span></div>
+      <div class="detail-row"><span class="k">Final protected reserve</span><span class="v money">${formatUGX(s.finalReserve)}</span></div>
+      <div class="detail-row"><span class="k">Available earnings</span><span class="v money money-pos">${formatUGX(s.availableEarnings)}</span></div>
+      <div class="detail-row"><span class="k">Total wins</span><span class="v money-pos">${formatUGX(s.totalWins)}</span></div>
+      <div class="detail-row"><span class="k">Total losses</span><span class="v money-neg">${formatUGX(s.totalLosses)}</span></div>
+      <div class="detail-row"><span class="k">Company share</span><span class="v money">${formatUGX(s.companyShare)}</span></div>
+      <div class="detail-row"><span class="k">Final settlement</span><span class="v money"><strong>${formatUGX(s.finalSettlement)}</strong></span></div>
+      <div class="detail-row"><span class="k">Net position</span><span class="v money ${s.netPosition >= 0 ? "money-pos" : "money-neg"}">${formatUGX(s.netPosition)}</span></div>
+
+      <div class="alert alert-warn" style="margin-top:14px">
+        <span>⚠️</span>
+        <div>Settlement is final. The cycle will be closed and the user notified.</div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn btn-outline" data-close type="button">Cancel</button>
+        <button class="btn btn-royal" id="confirmSettle" type="button">Confirm Settlement</button>
+      </div>
+    `);
+
+    $("#confirmSettle").onclick = async ()=>{
+      const ok = await confirmDialog({
+        title: "Confirm settlement?",
+        message: "This closes the cycle permanently.",
+        confirmText: "Settle", danger: false
+      });
+      if(!ok) return;
+      try{
+        await settleCycle({ cycleId, adminUid: admin.uid });
+        toast("Cycle settled", "success");
+        closeModal();
+      }catch(err){ toast(err.message || "Failed", "error"); }
+    };
+  }
+
+  $("#tabs").addEventListener("click", e => {
+    const t = e.target.closest(".tab"); if(!t) return;
+    filter = t.dataset.s;
+    $("#tabs").querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+    render();
+  });
+
+  watch(PATH.cycles, (data)=>{
+    cycles = data ? Object.entries(data).map(([id,v]) => ({ id, ...v })) : [];
+    render();
+  });
+</script>
+</body>
+</html>
