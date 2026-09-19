@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Users — Admin — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Admin / Users</div>
+    <h1>User Management</h1>
+    <p>Search, review, and manage user accounts. Financial records are retained.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="form-row">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Search by name, email, or phone</label>
+          <input class="form-control" id="search" placeholder="Type to search…">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Filter by status</label>
+          <select class="form-control" id="statusFilter">
+            <option value="ALL">All</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="responsive-table">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Contact</th><th>Balance</th>
+              <th>Contributed</th><th>Status</th><th>Role</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="uBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mobile-list" id="uMobile"></div>
+
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
+           formatUGX, formatDate, statusBadge, emptyState, esc, initials,
+           openModal, closeModal, confirmDialog } from "../js/ui.js";
+  import { requireAdmin } from "../js/auth.js";
+  import { listAll, watch, updateItem, logActivity, PATH } from "../js/database.js";
+
+  const admin = await requireAdmin();
+  renderHeader({ user:admin, isAdmin:true });
+  renderFooter();
+  renderBottomNav({ user:admin, isAdmin:true });
+
+  let users = [];
+  let query = "";
+  let statusFilter = "ALL";
+
+  function render(){
+    const src = users.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    const filtered = src.filter(u => {
+      if(statusFilter !== "ALL" && (u.status || "active") !== statusFilter) return false;
+      if(!query) return true;
+      const q = query.toLowerCase();
+      return (u.name  || "").toLowerCase().includes(q)
+          || (u.email || "").toLowerCase().includes(q)
+          || (u.phone || "").toLowerCase().includes(q);
+    });
+
+    const body = $("#uBody");
+    const mob  = $("#uMobile");
+
+    if(!filtered.length){
+      body.innerHTML = `<tr><td colspan="7">${emptyState("👥","No users","Nothing matches this filter.")}</td></tr>`;
+      mob.innerHTML  = emptyState("👥","No users","Nothing matches this filter.");
+      return;
+    }
+
+    body.innerHTML = filtered.map(u => `
+      <tr>
+        <td>
+          ${esc(u.name || "—")}
+          <div style="font-size:.72rem;color:var(--gray-400)">${esc(u.uid || "")}</div>
+        </td>
+        <td>
+          ${esc(u.email || "")}
+          <div style="font-size:.72rem;color:var(--gray-400)">${esc(u.phone || "")}</div>
+        </td>
+        <td class="money">${formatUGX(u.balance || 0)}</td>
+        <td class="money">${formatUGX(u.totalDeposited || 0)}</td>
+        <td>${statusBadge(u.status || "active")}</td>
+        <td>${esc(u.role || "user")}</td>
+        <td><button class="btn btn-sm btn-outline" data-view="${u.uid}" type="button">View</button></td>
+      </tr>`).join("");
+
+    mob.innerHTML = filtered.map(u => `
+      <div class="card" style="padding:14px">
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+          <div class="avatar">${initials(u.name || "U")}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700">${esc(u.name || "—")}</div>
+            <div style="font-size:.75rem;color:var(--gray-400)">${esc(u.email || "")}</div>
+          </div>
+          ${statusBadge(u.status || "active")}
+        </div>
+        <div class="detail-row"><span class="k">Balance</span><span class="v money">${formatUGX(u.balance || 0)}</span></div>
+        <div class="detail-row"><span class="k">Contributed</span><span class="v money">${formatUGX(u.totalDeposited || 0)}</span></div>
+        <div class="detail-row"><span class="k">Role</span><span class="v">${esc(u.role || "user")}</span></div>
+        <button class="btn btn-sm btn-outline" data-view="${u.uid}" type="button" style="margin-top:10px;width:100%">View details</button>
+      </div>`).join("");
+
+    document.querySelectorAll("[data-view]").forEach(b => b.onclick = ()=> viewUser(b.dataset.view));
+  }
+
+  async function viewUser(uid){
+    const u = users.find(x => x.uid === uid);
+    if(!u) return;
+
+    const [txs, deps, wds] = await Promise.all([
+      listAll(PATH.transactions),
+      listAll(PATH.deposits),
+      listAll(PATH.withdrawals)
+    ]);
+    const myTx  = txs.filter(t => t.uid === uid).sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0,8);
+    const myDep = deps.filter(d => d.uid === uid).length;
+    const myWD  = wds.filter(w => w.uid === uid).length;
+
+    openModal(`
+      <div class="modal-head">
+        <h3>${esc(u.name || "User")}</h3>
+        <button class="modal-close" data-close type="button">✕</button>
+      </div>
+      <div class="detail-row"><span class="k">Email</span><span class="v">${esc(u.email || "—")}</span></div>
+      <div class="detail-row"><span class="k">Phone</span><span class="v">${esc(u.phone || "—")}</span></div>
+      <div class="detail-row"><span class="k">Status</span><span class="v">${statusBadge(u.status || "active")}</span></div>
+      <div class="detail-row"><span class="k">Role</span><span class="v">${esc(u.role || "user")}</span></div>
+      <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(u.createdAt)}</span></div>
+      <div class="detail-row"><span class="k">Available balance</span><span class="v money">${formatUGX(u.balance || 0)}</span></div>
+      <div class="detail-row"><span class="k">Reserve</span><span class="v money">${formatUGX(u.reserveBalance || 0)}</span></div>
+      <div class="detail-row"><span class="k">Total contributed</span><span class="v money">${formatUGX(u.totalDeposited || 0)}</span></div>
+      <div class="detail-row"><span class="k">Total distributed</span><span class="v money">${formatUGX(u.totalDistributed || 0)}</span></div>
+      <div class="detail-row"><span class="k">Total withdrawn</span><span class="v money">${formatUGX(u.totalWithdrawn || 0)}</span></div>
+      <div class="detail-row"><span class="k">Deposits / Withdrawals</span><span class="v">${myDep} / ${myWD}</span></div>
+
+      <h4 style="margin:16px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Recent transactions</h4>
+      ${myTx.length
+        ? myTx.map(t => `
+          <div class="detail-row">
+            <div>
+              <div style="font-weight:600;font-size:.85rem">${esc(t.type)}</div>
+              <div style="font-size:.72rem;color:var(--gray-400)">${formatDate(t.createdAt)}</div>
+            </div>
+            <div class="money ${(t.amount||0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount || 0)}</div>
+          </div>`).join("")
+        : `<div style="font-size:.85rem;color:var(--gray-400)">No transactions</div>`}
+
+      <div class="modal-actions" style="flex-direction:column;margin-top:20px">
+        ${u.status === "suspended"
+          ? `<button class="btn btn-success" id="reactivate" type="button" style="width:100%">Reactivate Account</button>`
+          : `<button class="btn btn-danger" id="suspend" type="button" style="width:100%">Suspend Account</button>`}
+      </div>
+    `);
+
+    const sus = document.getElementById("suspend");
+    const rea = document.getElementById("reactivate");
+    sus && (sus.onclick = ()=> changeStatus(u.uid, "suspended"));
+    rea && (rea.onclick = ()=> changeStatus(u.uid, "active"));
+  }
+
+  async function changeStatus(uid, status){
+    const u = users.find(x => x.uid === uid);
+    const ok = await confirmDialog({
+      title: status === "suspended" ? "Suspend user?" : "Reactivate user?",
+      message: status === "suspended"
+        ? "The user will not be able to log in, contribute, or comment until reactivated."
+        : "The user will regain access.",
+      confirmText: status === "suspended" ? "Suspend" : "Reactivate",
+      danger: status === "suspended"
+    });
+    if(!ok) return;
+
+    await updateItem(PATH.users, uid, { status });
+    await logActivity({
+      adminId: admin.uid,
+      action: "USER_STATUS_CHANGE",
+      target: uid,
+      prev: u?.status || "active",
+      next: status,
+      note: u?.email || ""
+    });
+    toast(`User ${status}`, "success");
+    closeModal();
+  }
+
+  $("#search").addEventListener("input", e => { query = e.target.value.trim(); render(); });
+  $("#statusFilter").addEventListener("change", e => { statusFilter = e.target.value; render(); });
+
+  watch(PATH.users, (data)=>{
+    users = data ? Object.entries(data).map(([uid,v]) => ({ uid, ...v })) : [];
+    render();
+  });
+</script>
+</body>
+</html>
