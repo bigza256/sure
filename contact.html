@@ -25,46 +25,50 @@
     <div class="risk-notice" style="margin-bottom:18px">
       <span>ℹ️</span>
       <div>
-        <strong>Note:</strong> Contact details are configured by the administrator. Do not send money
-        to any number not listed on this page.
+        <strong>Security notice:</strong> Always verify contact details on this page before sending
+        money or personal information. SURE will never contact you first asking for your password,
+        PIN, or a payment to a number not listed here.
       </div>
     </div>
 
     <div class="grid grid-2" style="margin-bottom:18px">
       <div class="card">
         <h3 style="margin-bottom:12px">Official contact channels</h3>
-        <div class="detail-row"><span class="k">WhatsApp</span><span class="v">[To be configured by administrator]</span></div>
-        <div class="detail-row"><span class="k">Mobile Money (official)</span><span class="v">[To be configured by administrator]</span></div>
-        <div class="detail-row"><span class="k">Email</span><span class="v">[To be configured by administrator]</span></div>
-        <div class="detail-row"><span class="k">Business address</span><span class="v">[To be configured by administrator]</span></div>
-        <div class="detail-row"><span class="k">Support hours</span><span class="v">[To be configured by administrator]</span></div>
+        <div id="contactChannels">
+          <div class="skeleton sk-line w80"></div>
+          <div class="skeleton sk-line w60"></div>
+          <div class="skeleton sk-line w80"></div>
+          <div class="skeleton sk-line w60"></div>
+        </div>
       </div>
 
       <div class="card">
         <h3 style="margin-bottom:12px">Send a message</h3>
-        <div id="formError" class="alert alert-error" style="display:none"></div>
+        <div id="formError"   class="alert alert-error"   style="display:none"></div>
         <div id="formSuccess" class="alert alert-success" style="display:none"></div>
         <form id="contactForm" novalidate>
           <div class="form-group">
-            <label class="form-label">Your name</label>
-            <input class="form-control" id="cName" required>
+            <label class="form-label" for="cName">Your name</label>
+            <input class="form-control" id="cName" required maxlength="100">
           </div>
           <div class="form-group">
-            <label class="form-label">Email</label>
-            <input class="form-control" id="cEmail" type="email" required>
+            <label class="form-label" for="cEmail">Email</label>
+            <input class="form-control" id="cEmail" type="email" required maxlength="120">
           </div>
           <div class="form-group">
-            <label class="form-label">Subject</label>
-            <input class="form-control" id="cSubject" required>
+            <label class="form-label" for="cPhone">Phone (optional)</label>
+            <input class="form-control" id="cPhone" type="tel" maxlength="20">
           </div>
           <div class="form-group">
-            <label class="form-label">Message</label>
-            <textarea class="form-control" id="cMessage" rows="4" required></textarea>
+            <label class="form-label" for="cSubject">Subject</label>
+            <input class="form-control" id="cSubject" required maxlength="120">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cMessage">Message</label>
+            <textarea class="form-control" id="cMessage" rows="5" required maxlength="2000"></textarea>
+            <div class="form-hint"><span id="msgCount">0</span> / 2000</div>
           </div>
           <button class="btn btn-primary btn-block" id="submitBtn" type="submit">Send Message</button>
-          <div class="form-hint" style="margin-top:10px">
-            In this demo, messages are stored locally for review by the administrator.
-          </div>
         </form>
       </div>
     </div>
@@ -75,7 +79,7 @@
         <li>Check the <a href="faq.html">FAQ</a> — most questions are answered there.</li>
         <li>For deposit or withdrawal issues, include your transaction reference.</li>
         <li>Do not send your password or Firebase credentials.</li>
-        <li>SURE will never ask you to send funds to a number not listed on this page.</li>
+        <li>Support hours are listed above. Replies may take up to one business day.</li>
       </ul>
     </div>
 
@@ -86,41 +90,81 @@
 <div id="bottomNav"></div>
 
 <script type="module">
-  import { renderHeader, renderFooter, renderBottomNav, toast, $ } from "./js/ui.js";
+  import { renderHeader, renderFooter, renderBottomNav, $, toast, esc } from "./js/ui.js";
   import { whenAuthReady } from "./js/auth.js";
-  import { pushItem } from "./js/database.js";
+  import { pushItem, watch, PATH } from "./js/database.js";
 
-  const p = await whenAuthReady();
-  renderHeader({ user:p, isAdmin:p?.role === "admin" });
+  const profile = await whenAuthReady();
+  renderHeader({ user:profile, isAdmin:profile?.role === "admin" });
   renderFooter();
-  renderBottomNav({ user:p, isAdmin:p?.role === "admin" });
+  renderBottomNav({ user:profile, isAdmin:profile?.role === "admin" });
 
+  // --- Contact channels from system_config.contactInfo ---
+  function paintChannels(ci){
+    const el = $("#contactChannels");
+    if(!ci){
+      el.innerHTML = `<p style="font-size:.88rem;color:var(--gray-600)">
+        Contact details have not been configured yet. Please check back soon.</p>`;
+      return;
+    }
+    const row = (label, value) => {
+      const v = value && String(value).trim() ? esc(value) : "—";
+      return `<div class="detail-row"><span class="k">${label}</span><span class="v">${v}</span></div>`;
+    };
+    el.innerHTML = [
+      row("WhatsApp",            ci.whatsapp),
+      row("Mobile Money (official)", ci.momoNumber),
+      row("Email",               ci.email),
+      row("Complaints email",    ci.complaintsEmail),
+      row("Business address",    ci.address),
+      row("Support hours",       ci.supportHours)
+    ].join("");
+  }
+
+  watch(`${PATH.systemConfig}/contactInfo`, paintChannels);
+
+  // --- Message character counter ---
+  $("#cMessage").addEventListener("input", e => {
+    $("#msgCount").textContent = e.target.value.length;
+  });
+
+  // --- Submit ---
   const errBox = $("#formError"), okBox = $("#formSuccess");
-  const showErr = m => { errBox.textContent = m; errBox.style.display="flex"; okBox.style.display="none"; };
-  const showOk  = m => { okBox.textContent = m;  okBox.style.display="flex"; errBox.style.display="none"; };
+  const showErr = m => { errBox.textContent = m; errBox.style.display = "flex"; okBox.style.display = "none"; };
+  const showOk  = m => { okBox.textContent = m;  okBox.style.display = "flex"; errBox.style.display = "none"; };
 
-  $("#contactForm").addEventListener("submit", async e=>{
+  $("#contactForm").addEventListener("submit", async e => {
     e.preventDefault();
-    errBox.style.display="none"; okBox.style.display="none";
-    const name = $("#cName").value.trim();
-    const email = $("#cEmail").value.trim();
+    errBox.style.display = "none"; okBox.style.display = "none";
+
+    const name    = $("#cName").value.trim();
+    const email   = $("#cEmail").value.trim();
+    const phone   = $("#cPhone").value.trim();
     const subject = $("#cSubject").value.trim();
     const message = $("#cMessage").value.trim();
-    if(!name || !email || !subject || !message) return showErr("Please complete all fields.");
-    if(!/^\S+@\S+\.\S+$/.test(email)) return showErr("Please enter a valid email.");
+
+    if(!name || name.length < 2)                 return showErr("Please enter your name.");
+    if(!/^\S+@\S+\.\S+$/.test(email))            return showErr("Please enter a valid email.");
+    if(!subject || subject.length < 3)           return showErr("Please enter a subject.");
+    if(!message || message.length < 5)           return showErr("Please write a message.");
+    if(message.length > 2000)                    return showErr("Message exceeds 2000 characters.");
 
     const btn = $("#submitBtn");
     btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Sending…`;
+
     try{
       await pushItem("contactMessages", {
-        uid: p?.uid || null, name, email, subject, message,
+        uid: profile?.uid || null,
+        name, email, phone, subject, message,
+        status: "NEW",
         createdAt: Date.now()
       });
-      showOk("Message received. The administrator will follow up if needed.");
+      showOk("Message received. The administrator will review it shortly.");
       toast("Message sent", "success");
       e.target.reset();
+      $("#msgCount").textContent = "0";
     }catch(err){
-      showErr(err.message || "Could not send message.");
+      showErr(err.message || "Could not send message. Please try again.");
     }finally{
       btn.disabled = false; btn.textContent = "Send Message";
     }
