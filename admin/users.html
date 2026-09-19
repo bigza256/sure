@@ -15,25 +15,26 @@
   <div class="container">
     <div class="breadcrumb">Admin / Users</div>
     <h1>User Management</h1>
-    <p>Search, review, and manage user accounts. Financial records are retained.</p>
+    <p>Search, verify, and manage contributors.</p>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
-
     <div class="card" style="margin-bottom:18px">
       <div class="form-row">
         <div class="form-group" style="margin:0">
-          <label class="form-label">Search by name, email, or phone</label>
-          <input class="form-control" id="search" placeholder="Type to search…">
+          <label class="form-label">Search</label>
+          <input class="form-control" id="search" placeholder="Name, email or phone">
         </div>
         <div class="form-group" style="margin:0">
-          <label class="form-label">Filter by status</label>
+          <label class="form-label">Filter</label>
           <select class="form-control" id="statusFilter">
             <option value="ALL">All</option>
             <option value="active">Active</option>
             <option value="suspended">Suspended</option>
+            <option value="verified">Verified</option>
+            <option value="unverified">Unverified</option>
           </select>
         </div>
       </div>
@@ -42,18 +43,12 @@
     <div class="responsive-table">
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Name</th><th>Contact</th><th>Balance</th>
-              <th>Contributed</th><th>Status</th><th>Role</th><th></th>
-            </tr>
-          </thead>
+          <thead><tr><th>Name</th><th>Contact</th><th>Contribution</th><th>Reserve</th><th>Status</th><th>Verification</th><th></th></tr></thead>
           <tbody id="uBody"></tbody>
         </table>
       </div>
     </div>
     <div class="mobile-list" id="uMobile"></div>
-
   </div>
 </main>
 
@@ -65,155 +60,140 @@
            formatUGX, formatDate, statusBadge, emptyState, esc, initials,
            openModal, closeModal, confirmDialog } from "../js/ui.js";
   import { requireAdmin } from "../js/auth.js";
-  import { listAll, watch, updateItem, logActivity, PATH } from "../js/database.js";
+  import { listAll, watch, updateItem, logActivity, notify, PATH } from "../js/database.js";
 
   const admin = await requireAdmin();
-  renderHeader({ user:admin, isAdmin:true });
+  renderHeader({ user: admin, isAdmin: true });
   renderFooter();
-  renderBottomNav({ user:admin, isAdmin:true });
+  renderBottomNav({ user: admin, isAdmin: true });
 
-  let users = [];
-  let query = "";
-  let statusFilter = "ALL";
+  let users = [], query = "", filter = "ALL";
 
   function render(){
-    const src = users.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    const src = users.slice().sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
     const filtered = src.filter(u => {
-      if(statusFilter !== "ALL" && (u.status || "active") !== statusFilter) return false;
+      if(filter === "active" && u.status === "suspended") return false;
+      if(filter === "suspended" && u.status !== "suspended") return false;
+      if(filter === "verified" && u.verificationStatus !== "verified") return false;
+      if(filter === "unverified" && u.verificationStatus === "verified") return false;
       if(!query) return true;
       const q = query.toLowerCase();
-      return (u.name  || "").toLowerCase().includes(q)
+      return (u.name || "").toLowerCase().includes(q)
           || (u.email || "").toLowerCase().includes(q)
           || (u.phone || "").toLowerCase().includes(q);
     });
 
-    const body = $("#uBody");
-    const mob  = $("#uMobile");
-
     if(!filtered.length){
-      body.innerHTML = `<tr><td colspan="7">${emptyState("👥","No users","Nothing matches this filter.")}</td></tr>`;
-      mob.innerHTML  = emptyState("👥","No users","Nothing matches this filter.");
+      $("#uBody").innerHTML = `<tr><td colspan="7">${emptyState("👥","No users","Nothing matches.")}</td></tr>`;
+      $("#uMobile").innerHTML = emptyState("👥","No users","Nothing matches.");
       return;
     }
 
-    body.innerHTML = filtered.map(u => `
+    $("#uBody").innerHTML = filtered.map(u => {
+      const w = u.wallets || {};
+      return `
       <tr>
-        <td>
-          ${esc(u.name || "—")}
-          <div style="font-size:.72rem;color:var(--gray-400)">${esc(u.uid || "")}</div>
-        </td>
-        <td>
-          ${esc(u.email || "")}
-          <div style="font-size:.72rem;color:var(--gray-400)">${esc(u.phone || "")}</div>
-        </td>
-        <td class="money">${formatUGX(u.balance || 0)}</td>
-        <td class="money">${formatUGX(u.totalDeposited || 0)}</td>
+        <td>${esc(u.name || "—")}<div style="font-size:.72rem;color:var(--gray-400)">${esc(u.uid || "")}</div></td>
+        <td>${esc(u.email || "")}<div style="font-size:.72rem;color:var(--gray-400)">${esc(u.phone || "")}</div></td>
+        <td class="money">${formatUGX(w.totalContribution || 0)}</td>
+        <td class="money">${formatUGX(w.protectedReserve || 0)}</td>
         <td>${statusBadge(u.status || "active")}</td>
-        <td>${esc(u.role || "user")}</td>
+        <td><span class="badge ${u.verificationStatus === "verified" ? "badge-active" : "badge-void"}">${esc(u.verificationStatus || "unverified")}</span></td>
         <td><button class="btn btn-sm btn-outline" data-view="${u.uid}" type="button">View</button></td>
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
 
-    mob.innerHTML = filtered.map(u => `
+    $("#uMobile").innerHTML = filtered.map(u => {
+      const w = u.wallets || {};
+      return `
       <div class="card" style="padding:14px">
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
           <div class="avatar">${initials(u.name || "U")}</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700">${esc(u.name || "—")}</div>
-            <div style="font-size:.75rem;color:var(--gray-400)">${esc(u.email || "")}</div>
-          </div>
+          <div style="flex:1"><div style="font-weight:700">${esc(u.name || "—")}</div>
+            <div style="font-size:.75rem;color:var(--gray-400)">${esc(u.email || "")}</div></div>
           ${statusBadge(u.status || "active")}
         </div>
-        <div class="detail-row"><span class="k">Balance</span><span class="v money">${formatUGX(u.balance || 0)}</span></div>
-        <div class="detail-row"><span class="k">Contributed</span><span class="v money">${formatUGX(u.totalDeposited || 0)}</span></div>
-        <div class="detail-row"><span class="k">Role</span><span class="v">${esc(u.role || "user")}</span></div>
-        <button class="btn btn-sm btn-outline" data-view="${u.uid}" type="button" style="margin-top:10px;width:100%">View details</button>
-      </div>`).join("");
+        <div class="detail-row"><span class="k">Contribution</span><span class="v money">${formatUGX(w.totalContribution || 0)}</span></div>
+        <div class="detail-row"><span class="k">Reserve</span><span class="v money">${formatUGX(w.protectedReserve || 0)}</span></div>
+        <button class="btn btn-sm btn-outline" data-view="${u.uid}" type="button" style="margin-top:10px;width:100%">View</button>
+      </div>`;
+    }).join("");
 
     document.querySelectorAll("[data-view]").forEach(b => b.onclick = ()=> viewUser(b.dataset.view));
   }
 
   async function viewUser(uid){
-    const u = users.find(x => x.uid === uid);
-    if(!u) return;
-
-    const [txs, deps, wds] = await Promise.all([
-      listAll(PATH.transactions),
-      listAll(PATH.deposits),
-      listAll(PATH.withdrawals)
-    ]);
-    const myTx  = txs.filter(t => t.uid === uid).sort((a,b) => (b.createdAt||0) - (a.createdAt||0)).slice(0,8);
-    const myDep = deps.filter(d => d.uid === uid).length;
-    const myWD  = wds.filter(w => w.uid === uid).length;
+    const u = users.find(x => x.uid === uid); if(!u) return;
+    const w = u.wallets || {};
+    const risk = u.riskState || { level: "NORMAL", reservePercent: 100 };
 
     openModal(`
-      <div class="modal-head">
-        <h3>${esc(u.name || "User")}</h3>
-        <button class="modal-close" data-close type="button">✕</button>
-      </div>
+      <div class="modal-head"><h3>${esc(u.name || "User")}</h3><button class="modal-close" data-close type="button">✕</button></div>
       <div class="detail-row"><span class="k">Email</span><span class="v">${esc(u.email || "—")}</span></div>
       <div class="detail-row"><span class="k">Phone</span><span class="v">${esc(u.phone || "—")}</span></div>
-      <div class="detail-row"><span class="k">Status</span><span class="v">${statusBadge(u.status || "active")}</span></div>
-      <div class="detail-row"><span class="k">Role</span><span class="v">${esc(u.role || "user")}</span></div>
+      <div class="detail-row"><span class="k">Provider</span><span class="v">${esc(u.provider || "—")}</span></div>
       <div class="detail-row"><span class="k">Created</span><span class="v">${formatDate(u.createdAt)}</span></div>
-      <div class="detail-row"><span class="k">Available balance</span><span class="v money">${formatUGX(u.balance || 0)}</span></div>
-      <div class="detail-row"><span class="k">Reserve</span><span class="v money">${formatUGX(u.reserveBalance || 0)}</span></div>
-      <div class="detail-row"><span class="k">Total contributed</span><span class="v money">${formatUGX(u.totalDeposited || 0)}</span></div>
-      <div class="detail-row"><span class="k">Total distributed</span><span class="v money">${formatUGX(u.totalDistributed || 0)}</span></div>
-      <div class="detail-row"><span class="k">Total withdrawn</span><span class="v money">${formatUGX(u.totalWithdrawn || 0)}</span></div>
-      <div class="detail-row"><span class="k">Deposits / Withdrawals</span><span class="v">${myDep} / ${myWD}</span></div>
+      <div class="detail-row"><span class="k">Status</span><span class="v">${statusBadge(u.status || "active")}</span></div>
+      <div class="detail-row"><span class="k">Verification</span><span class="v">${esc(u.verificationStatus || "unverified")}</span></div>
 
-      <h4 style="margin:16px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Recent transactions</h4>
-      ${myTx.length
-        ? myTx.map(t => `
-          <div class="detail-row">
-            <div>
-              <div style="font-weight:600;font-size:.85rem">${esc(t.type)}</div>
-              <div style="font-size:.72rem;color:var(--gray-400)">${formatDate(t.createdAt)}</div>
-            </div>
-            <div class="money ${(t.amount||0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount || 0)}</div>
-          </div>`).join("")
-        : `<div style="font-size:.85rem;color:var(--gray-400)">No transactions</div>`}
+      <h4 style="margin:14px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Wallets</h4>
+      <div class="detail-row"><span class="k">Total contribution</span><span class="v money">${formatUGX(w.totalContribution || 0)}</span></div>
+      <div class="detail-row"><span class="k">Protected reserve</span><span class="v money">${formatUGX(w.protectedReserve || 0)}</span></div>
+      <div class="detail-row"><span class="k">Available earnings</span><span class="v money">${formatUGX(w.availableEarnings || 0)}</span></div>
+      <div class="detail-row"><span class="k">Active allocation</span><span class="v money">${formatUGX(w.activeAllocation || 0)}</span></div>
+      <div class="detail-row"><span class="k">Total earnings</span><span class="v money">${formatUGX(w.totalEarningsGenerated || 0)}</span></div>
+      <div class="detail-row"><span class="k">Total withdrawn</span><span class="v money">${formatUGX(w.totalWithdrawn || 0)}</span></div>
+      <div class="detail-row"><span class="k">Company share</span><span class="v money">${formatUGX(w.companyShareContributed || 0)}</span></div>
 
-      <div class="modal-actions" style="flex-direction:column;margin-top:20px">
+      <h4 style="margin:14px 0 8px;font-size:.85rem;text-transform:uppercase;color:var(--gray-600)">Risk</h4>
+      <div class="detail-row"><span class="k">Level</span><span class="v">${risk.level}</span></div>
+      <div class="detail-row"><span class="k">Reserve %</span><span class="v">${(risk.reservePercent || 0).toFixed(1)}%</span></div>
+
+      <div class="modal-actions" style="flex-direction:column;gap:8px;margin-top:16px">
+        ${u.verificationStatus !== "verified"
+          ? `<button class="btn btn-success" id="verifyBtn" type="button" style="width:100%">Mark Verified</button>` : ""}
         ${u.status === "suspended"
-          ? `<button class="btn btn-success" id="reactivate" type="button" style="width:100%">Reactivate Account</button>`
-          : `<button class="btn btn-danger" id="suspend" type="button" style="width:100%">Suspend Account</button>`}
+          ? `<button class="btn btn-success" id="reactBtn" type="button" style="width:100%">Reactivate</button>`
+          : `<button class="btn btn-danger" id="susBtn" type="button" style="width:100%">Suspend</button>`}
       </div>
     `);
 
-    const sus = document.getElementById("suspend");
-    const rea = document.getElementById("reactivate");
-    sus && (sus.onclick = ()=> changeStatus(u.uid, "suspended"));
-    rea && (rea.onclick = ()=> changeStatus(u.uid, "active"));
+    const v = document.getElementById("verifyBtn");
+    const s = document.getElementById("susBtn");
+    const r = document.getElementById("reactBtn");
+    v && (v.onclick = ()=> setVerification(u.uid, "verified"));
+    s && (s.onclick = ()=> setStatus(u.uid, "suspended"));
+    r && (r.onclick = ()=> setStatus(u.uid, "active"));
   }
 
-  async function changeStatus(uid, status){
+  async function setVerification(uid, status){
+    await updateItem(PATH.users, uid, { verificationStatus: status });
+    await logActivity({ adminId: admin.uid, action: "USER_VERIFY", target: uid,
+      prev: "unverified", next: status });
+    await notify(uid, { type: "VERIFICATION", title: "Account verified", body: "Your account has been verified." });
+    toast("Verification updated", "success");
+    closeModal();
+  }
+  async function setStatus(uid, status){
     const u = users.find(x => x.uid === uid);
     const ok = await confirmDialog({
       title: status === "suspended" ? "Suspend user?" : "Reactivate user?",
       message: status === "suspended"
-        ? "The user will not be able to log in, contribute, or comment until reactivated."
-        : "The user will regain access.",
+        ? "The user will not be able to log in or transact."
+        : "The user will regain full access.",
       confirmText: status === "suspended" ? "Suspend" : "Reactivate",
       danger: status === "suspended"
     });
     if(!ok) return;
-
     await updateItem(PATH.users, uid, { status });
-    await logActivity({
-      adminId: admin.uid,
-      action: "USER_STATUS_CHANGE",
-      target: uid,
-      prev: u?.status || "active",
-      next: status,
-      note: u?.email || ""
-    });
+    await logActivity({ adminId: admin.uid, action: "USER_STATUS_CHANGE", target: uid,
+      prev: u?.status || "active", next: status, note: u?.email || "" });
     toast(`User ${status}`, "success");
     closeModal();
   }
 
   $("#search").addEventListener("input", e => { query = e.target.value.trim(); render(); });
-  $("#statusFilter").addEventListener("change", e => { statusFilter = e.target.value; render(); });
+  $("#statusFilter").addEventListener("change", e => { filter = e.target.value; render(); });
 
   watch(PATH.users, (data)=>{
     users = data ? Object.entries(data).map(([uid,v]) => ({ uid, ...v })) : [];
