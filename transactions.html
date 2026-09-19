@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1430">
-<title>Transactions — SURE</title>
+<title>Ledger — SURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -13,20 +13,20 @@
 
 <section class="page-header">
   <div class="container">
-    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Transactions</div>
+    <div class="breadcrumb"><a href="dashboard.html">Dashboard</a> / Ledger</div>
     <h1>Transaction Ledger</h1>
-    <p>Append-only record of every balance change on your account.</p>
+    <p>Every balance-changing event on your account.</p>
+    <div style="margin-top:12px"><button class="btn btn-sm btn-outline-light" id="exportBtn" type="button">Export CSV</button></div>
   </div>
 </section>
 
 <main class="section-tight">
   <div class="container">
     <div class="tabs" id="tabs"></div>
-
     <div class="responsive-table">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Note</th><th>Balance after</th></tr></thead>
+          <thead><tr><th>Date</th><th>Type</th><th>Wallet</th><th>Amount</th><th>Before</th><th>After</th><th>Note</th></tr></thead>
           <tbody id="txBody"></tbody>
         </table>
       </div>
@@ -39,61 +39,79 @@
 <div id="bottomNav"></div>
 
 <script type="module">
-  import { renderHeader, renderFooter, renderBottomNav, $,
-           formatUGX, formatDateTime, emptyState, esc } from "./js/ui.js";
-  import { requireAuth } from "./js/auth.js";
+  import { renderHeader, renderFooter, renderBottomNav, $, formatUGX, formatDateTime,
+           emptyState, esc, toast } from "./js/ui.js";
+  import { requireAuth, currentIsAdmin } from "./js/auth.js";
   import { listBy, PATH } from "./js/database.js";
 
   const profile = await requireAuth("login.html");
-  renderHeader({ user: profile, isAdmin: profile.role === "admin" });
+  const isAdmin = currentIsAdmin();
+  renderHeader({ user: profile, isAdmin });
   renderFooter();
-  renderBottomNav({ user: profile, isAdmin: profile.role === "admin" });
+  renderBottomNav({ user: profile, isAdmin });
 
-  const TYPES = ["ALL","DEPOSIT","BET_STAKE","BET_RETURN","PROFIT_DISTRIBUTION",
-                 "WITHDRAWAL","REFUND","ADJUSTMENT"];
+  const TYPES = ["ALL","CONTRIBUTION","ACTIVE_ALLOCATION","RESERVE_ADDITION",
+                 "BET_WIN","BET_LOSS","STAKE_RETURN","PROFIT_DISTRIBUTION",
+                 "COMPANY_SHARE","WITHDRAWAL","REFUND","ADJUSTMENT"];
   let active = "ALL";
-  let all = (await listBy(PATH.transactions, "uid", profile.uid))
-    .sort((a,b)=> (b.createdAt||0)-(a.createdAt||0));
+  const all = (await listBy(PATH.transactions, "uid", profile.uid))
+    .sort((a,b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-  function render(){
-    const tabs = $("#tabs");
-    tabs.innerHTML = TYPES.map(t=>
-      `<button class="tab ${t===active?"active":""}" data-t="${t}">${t.replace(/_/g," ")}</button>`
+  function renderTabs(){
+    $("#tabs").innerHTML = TYPES.map(t =>
+      `<button class="tab ${t === active ? "active" : ""}" data-t="${t}" type="button">${t.replace(/_/g," ")}</button>`
     ).join("");
-    tabs.querySelectorAll(".tab").forEach(b => b.onclick = ()=>{
-      active = b.dataset.t; renderList();
-      tabs.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active", x.dataset.t===active));
+    $("#tabs").querySelectorAll(".tab").forEach(b => b.onclick = ()=>{
+      active = b.dataset.t; renderTabs(); renderList();
     });
-    renderList();
   }
 
   function renderList(){
-    const list = active === "ALL" ? all : all.filter(t=>t.type === active);
-    const body = $("#txBody"), mob = $("#txMobile");
+    const list = active === "ALL" ? all : all.filter(t => t.type === active);
     if(!list.length){
-      body.innerHTML = `<tr><td colspan="5">${emptyState("🧾","No transactions","Nothing matches this filter.")}</td></tr>`;
-      mob.innerHTML  = emptyState("🧾","No transactions","Nothing matches this filter.");
+      $("#txBody").innerHTML = `<tr><td colspan="7">${emptyState("🧾","No entries","Nothing matches this filter.")}</td></tr>`;
+      $("#txMobile").innerHTML = emptyState("🧾","No entries","Nothing matches this filter.");
       return;
     }
-    body.innerHTML = list.map(t=>`
+    $("#txBody").innerHTML = list.map(t => `
       <tr>
-        <td>${formatDateTime(t.createdAt)}</td>
+        <td>${formatDateTime(t.timestamp)}</td>
         <td><span class="badge badge-void">${esc(t.type)}</span></td>
-        <td class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}">${formatUGX(t.amount)}</td>
-        <td style="color:var(--gray-600);font-size:.82rem">${esc(t.note||"—")}</td>
-        <td class="money">${t.balanceAfter!=null?formatUGX(t.balanceAfter):"—"}</td>
+        <td>${esc(t.wallet || "—")}</td>
+        <td class="money ${(t.amount || 0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount)}</td>
+        <td class="money">${t.previousBalance != null ? formatUGX(t.previousBalance) : "—"}</td>
+        <td class="money">${t.newBalance != null ? formatUGX(t.newBalance) : "—"}</td>
+        <td style="font-size:.8rem;color:var(--gray-600)">${esc(t.note || "")}</td>
       </tr>`).join("");
-    mob.innerHTML = list.map(t=>`
+    $("#txMobile").innerHTML = list.map(t => `
       <div class="card" style="padding:14px">
-        <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
           <span class="badge badge-void">${esc(t.type)}</span>
-          <span class="money ${(t.amount||0)>=0?"money-pos":"money-neg"}">${formatUGX(t.amount)}</span>
+          <span class="money ${(t.amount || 0) >= 0 ? "money-pos" : "money-neg"}">${formatUGX(t.amount)}</span>
         </div>
-        <div style="font-size:.8rem;color:var(--gray-600)">${esc(t.note||"")}</div>
-        <div style="font-size:.72rem;color:var(--gray-400);margin-top:4px">${formatDateTime(t.createdAt)} · After: ${t.balanceAfter!=null?formatUGX(t.balanceAfter):"—"}</div>
+        <div style="font-size:.8rem;color:var(--gray-600)">${esc(t.wallet || "")} · ${esc(t.note || "")}</div>
+        <div style="font-size:.72rem;color:var(--gray-400);margin-top:4px">${formatDateTime(t.timestamp)} · After: ${t.newBalance != null ? formatUGX(t.newBalance) : "—"}</div>
       </div>`).join("");
   }
-  render();
+
+  $("#exportBtn").onclick = ()=>{
+    const rows = [["Date","Type","Wallet","Amount","PreviousBalance","NewBalance","Note","Reference"]];
+    all.forEach(t => rows.push([
+      new Date(t.timestamp || 0).toISOString(),
+      t.type || "", t.wallet || "", t.amount || 0,
+      t.previousBalance ?? "", t.newBalance ?? "",
+      t.note || "", t.referenceId || ""
+    ]));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `sure-ledger-${profile.uid}-${Date.now()}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast("Ledger exported", "success");
+  };
+
+  renderTabs(); renderList();
 </script>
 </body>
 </html>
