@@ -26,24 +26,28 @@
     <div class="grid grid-2" style="margin-bottom:18px">
       <div class="feature">
         <div class="feature-icon">1</div>
-        <h3>Register &amp; contribute</h3>
+        <h3>Register &amp; submit a contribution</h3>
         <p>Create your account, then submit a contribution between <strong>UGX 50,000</strong> and
-        <strong>UGX 800,000</strong> with the Mobile Money transaction reference and a screenshot.
-        Deposits are <strong>manually reviewed</strong> — screenshots do not auto-approve them.</p>
+        <strong>UGX 800,000</strong>. Send the payment to the <strong>designated Mobile Money
+        number</strong> shown on the deposit page and submit the transaction reference.
+        Deposits are <strong>manually reviewed</strong> by an administrator — screenshots do not
+        auto-approve them.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">2</div>
-        <h3>Your balance splits into two parts</h3>
-        <p>Once approved, your contribution becomes <strong>available balance</strong> (withdrawable
-        under the rules) or <strong>reserve / committed balance</strong> (funds committed to pool
-        betting activity, released only after settlement).</p>
+        <h3>Your contribution splits into three wallets</h3>
+        <p>Once approved, your contribution is divided:
+        <strong>Active Allocation</strong> (the portion allocated to pool activity),
+        <strong>Protected Reserve</strong> (held under the cycle rules), and
+        <strong>Available Earnings</strong> (grows from realized results and is the only wallet
+        eligible for withdrawal).</p>
       </div>
       <div class="feature">
         <div class="feature-icon">3</div>
         <h3>Follow the pool</h3>
-        <p>The pool page shows total contributions, committed amounts, realized profit, realized
-        losses, and each participant's contribution percentage — calculated transparently from
-        recorded contributions.</p>
+        <p>The pool page shows total contributions, active allocations, protected reserves,
+        available earnings, and total company share — all calculated from actual recorded
+        activity. No projections, no estimated profits.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">4</div>
@@ -55,14 +59,16 @@
       <div class="feature">
         <div class="feature-icon">5</div>
         <h3>Realized results drive distributions</h3>
-        <p>Profit distributions are only recorded when there is actual realized profit from a bet.
-        There are no promised daily returns, no guaranteed final amounts, and no income projections.</p>
+        <p>When an eligible allocation wins, gross profit is distributed across three destinations
+        per the platform's rules: user available earnings, protected reserve addition, and company
+        share. Losing stakes are recorded transparently.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">6</div>
         <h3>30-day cycle settlement</h3>
         <p>Each cycle runs for 30 days. At the end of the cycle, settlement is calculated from
-        actual pool performance and the published terms — never from a projected amount.</p>
+        actual pool performance — never from a projected amount. Your final position shows exactly
+        where every part of your contribution and earnings went.</p>
       </div>
     </div>
 
@@ -75,15 +81,17 @@
       </p>
       <div class="grid grid-2">
         <div class="card" style="background:var(--green-bg);border-color:#bbf7d0">
-          <div class="stat-label" style="color:var(--green)">If the bet WINS</div>
+          <div class="stat-label" style="color:var(--green)">If the allocation WINS</div>
           <div class="detail-row"><span class="k">Stake</span><span class="v">UGX 50,000</span></div>
           <div class="detail-row"><span class="k">Odds</span><span class="v">1.80</span></div>
           <div class="detail-row"><span class="k">Return</span><span class="v">UGX 90,000</span></div>
           <div class="detail-row"><span class="k">Gross profit</span><span class="v money-pos">UGX 40,000</span></div>
-          <div class="detail-row"><span class="k">Distribution (if permitted by rules)</span><span class="v">up to UGX 5,000</span></div>
+          <div class="detail-row"><span class="k">Available earnings (12.5%)</span><span class="v">UGX 5,000</span></div>
+          <div class="detail-row"><span class="k">Company share (12.5%)</span><span class="v">UGX 5,000</span></div>
+          <div class="detail-row"><span class="k">Reserve addition (75%)</span><span class="v">UGX 30,000</span></div>
         </div>
         <div class="card" style="background:var(--red-bg);border-color:#fecaca">
-          <div class="stat-label" style="color:var(--red)">If the bet LOSES</div>
+          <div class="stat-label" style="color:var(--red)">If the allocation LOSES</div>
           <div class="detail-row"><span class="k">Stake</span><span class="v">UGX 50,000</span></div>
           <div class="detail-row"><span class="k">Odds</span><span class="v">1.80</span></div>
           <div class="detail-row"><span class="k">Return</span><span class="v">UGX 0</span></div>
@@ -99,22 +107,30 @@
     </div>
 
     <div class="card card-pad-lg" style="margin-bottom:18px">
-      <h2 style="margin-bottom:12px">Balances, clearly separated</h2>
-      <div class="balance-split">
-        <div class="balance-block available">
-          <div class="stat-label">Available Balance</div>
-          <div class="stat-value money">UGX 0</div>
-          <div class="note">Not currently committed. Eligible for withdrawal under the published rules.</div>
+      <h2 style="margin-bottom:12px">Three wallets, clearly separated</h2>
+      <div style="display:grid;gap:12px;grid-template-columns:1fr">
+        <div class="card" style="padding:16px;border-left:4px solid #1e40af">
+          <div class="stat-label">Active Allocation</div>
+          <p style="font-size:.88rem;color:var(--gray-600);margin-top:6px">
+            Allocated to current pool activity. Not withdrawable until cycle settlement.
+          </p>
         </div>
-        <div class="balance-block reserve">
-          <div class="stat-label">Reserve / Committed</div>
-          <div class="stat-value money">UGX 0</div>
-          <div class="note">Committed to pool betting activity. Released only after cycle settlement.</div>
+        <div class="card" style="padding:16px;border-left:4px solid #152552">
+          <div class="stat-label">Protected Reserve</div>
+          <p style="font-size:.88rem;color:var(--gray-600);margin-top:6px">
+            Held under the platform's cycle rules. Released only after settlement.
+          </p>
+        </div>
+        <div class="card" style="padding:16px;border-left:4px solid #16a34a">
+          <div class="stat-label">Available Earnings</div>
+          <p style="font-size:.88rem;color:var(--gray-600);margin-top:6px">
+            Grows from realized results. The only wallet eligible for withdrawal under published rules.
+          </p>
         </div>
       </div>
     </div>
 
-    <div class="card card-pad-lg">
+    <div class="card card-pad-lg" style="margin-bottom:18px">
       <h2 style="margin-bottom:12px">The 30-day cycle</h2>
       <div class="grid grid-4">
         <div><div class="stat-label">Cycle start</div><div style="font-weight:700">Day 1</div></div>
@@ -126,7 +142,19 @@
         At the end of a cycle, settlement follows actual pool performance. There is no fixed final
         amount promised, and no guaranteed distribution.
       </p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+    </div>
+
+    <div class="risk-notice" style="margin-bottom:18px">
+      <span>⚠️</span>
+      <div>
+        <strong>Risk acknowledgement:</strong> Sports betting involves significant risk.
+        Past results do not guarantee future results. Contributions should only be made with money
+        you can afford to lose.
+      </div>
+    </div>
+
+    <div class="card card-pad-lg">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
         <a href="register.html" class="btn btn-primary">Create Account</a>
         <a href="faq.html" class="btn btn-outline">Read FAQ</a>
         <a href="risk-disclosure.html" class="btn btn-outline">Risk Disclosure</a>
@@ -142,6 +170,7 @@
 <script type="module">
   import { renderHeader, renderFooter, renderBottomNav } from "./js/ui.js";
   import { whenAuthReady } from "./js/auth.js";
+
   const p = await whenAuthReady();
   renderHeader({ user:p, isAdmin:p?.role === "admin" });
   renderFooter();
