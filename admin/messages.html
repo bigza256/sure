@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0a1430">
+<title>Messages — Admin — SURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  .msg-card{background:#fff;border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm);margin-bottom:12px}
+  .msg-card.unread{border-left:4px solid var(--amber)}
+  .msg-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+  .msg-subject{font-weight:700;color:var(--navy-900)}
+  .msg-meta{font-size:.78rem;color:var(--gray-400)}
+  .msg-body{margin-top:10px;font-size:.9rem;color:var(--gray-800);white-space:pre-wrap;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="header"></div>
+
+<section class="page-header">
+  <div class="container">
+    <div class="breadcrumb">Admin / Messages</div>
+    <h1>Contact Messages</h1>
+    <p>Messages submitted through the contact page.</p>
+  </div>
+</section>
+
+<main class="section-tight">
+  <div class="container">
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-v="NEW"       type="button">New</button>
+      <button class="tab"        data-v="RESOLVED"  type="button">Resolved</button>
+      <button class="tab"        data-v="ALL"       type="button">All</button>
+    </div>
+
+    <div id="list">
+      <div class="card"><div class="skeleton sk-line"></div><div class="skeleton sk-line w80"></div></div>
+    </div>
+
+  </div>
+</main>
+
+<div id="footer"></div>
+<div id="bottomNav"></div>
+
+<script type="module">
+  import { renderHeader, renderFooter, renderBottomNav, $, toast,
+           formatDateTime, emptyState, esc, confirmDialog } from "../js/ui.js";
+  import { requireAdmin } from "../js/auth.js";
+  import { watch, updateItem, PATH } from "../js/database.js";
+  import { db, ref, set } from "../js/firebase.js";
+
+  const admin = await requireAdmin();
+  renderHeader({ user:admin, isAdmin:true });
+  renderFooter();
+  renderBottomNav({ user:admin, isAdmin:true });
+
+  let messages = [];
+  let view = "NEW";
+
+  function render(){
+    const list = messages.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    const filtered = view === "ALL" ? list : list.filter(m => m.status === view);
+    const el = $("#list");
+
+    if(!filtered.length){
+      el.innerHTML = `<div class="card">${emptyState("📬","No messages","Nothing matches this filter.")}</div>`;
+      return;
+    }
+
+    el.innerHTML = filtered.map(m => `
+      <div class="msg-card ${m.status === "NEW" ? "unread" : ""}">
+        <div class="msg-head">
+          <div>
+            <div class="msg-subject">${esc(m.subject || "(no subject)")}</div>
+            <div class="msg-meta">
+              From <strong>${esc(m.name || "Anonymous")}</strong> · ${esc(m.email || "—")}
+              ${m.phone ? ` · ${esc(m.phone)}` : ""}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <span class="badge ${m.status === "NEW" ? "badge-pending" : "badge-completed"}">${esc(m.status || "NEW")}</span>
+            <div class="msg-meta" style="margin-top:4px">${formatDateTime(m.createdAt)}</div>
+          </div>
+        </div>
+        <div class="msg-body">${esc(m.message || "")}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <a class="btn btn-sm btn-outline" href="mailto:${esc(m.email||"")}?subject=Re: ${encodeURIComponent(m.subject||"Your message to SURE")}">Reply by email</a>
+          ${m.status === "NEW"
+            ? `<button class="btn btn-sm btn-success" data-resolve="${m.id}" type="button">Mark resolved</button>`
+            : `<button class="btn btn-sm btn-ghost"   data-reopen="${m.id}"  type="button">Reopen</button>`}
+          <button class="btn btn-sm btn-danger" data-del="${m.id}" type="button">Delete</button>
+        </div>
+      </div>`).join("");
+
+    el.querySelectorAll("[data-resolve]").forEach(b => b.onclick = () => setStatus(b.dataset.resolve, "RESOLVED"));
+    el.querySelectorAll("[data-reopen]").forEach(b => b.onclick = () => setStatus(b.dataset.reopen, "NEW"));
+    el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => del(b.dataset.del));
+  }
+
+  async function setStatus(id, status){
+    try{
+      await updateItem("contactMessages", id, { status, updatedAt: Date.now(), updatedBy: admin.uid });
+      toast(`Marked ${status}`, "success");
+    }catch(err){ toast(err.message || "Failed", "error"); }
+  }
+
+  async function del(id){
+    const ok = await confirmDialog({
+      title: "Delete message?",
+      message: "This permanently removes the message from the inbox.",
+      confirmText: "Delete", danger: true
+    });
+    if(!ok) return;
+    await set(ref(db, `contactMessages/${id}`), null);
+    toast("Deleted", "success");
+  }
+
+  $("#tabs").addEventListener("click", e => {
+    const t = e.target.closest(".tab"); if(!t) return;
+    view = t.dataset.v;
+    $("#tabs").querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+    render();
+  });
+
+  watch("contactMessages", (data) => {
+    messages = data ? Object.entries(data).map(([id, v]) => ({ id, ...v })) : [];
+    render();
+  });
+</script>
+</body>
+</html>
