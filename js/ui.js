@@ -1,8 +1,13 @@
 // ============================================
 // SURE — shared UI helpers
+// Track the Pool. Follow Every Bet.
 // ============================================
+
 export const $  = (s, r=document) => r.querySelector(s);
 export const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+
+// ---- App-wide constant ----
+export const APP_TAGLINE = "SURE — Track the Pool. Follow Every Bet.";
 
 // ---- Formatting ----
 export function formatUGX(n){
@@ -22,30 +27,39 @@ export function formatDateTime(ts){
   if(!ts) return "—";
   const d = typeof ts === "number" ? new Date(ts) : new Date(ts);
   if(isNaN(d)) return "—";
-  return d.toLocaleString("en-GB", { day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+  return d.toLocaleString("en-GB", {
+    day:"2-digit", month:"short", year:"numeric",
+    hour:"2-digit", minute:"2-digit"
+  });
 }
 export function timeAgo(ts){
   if(!ts) return "—";
   const s = Math.floor((Date.now() - Number(ts)) / 1000);
-  if(s < 60) return "just now";
-  if(s < 3600) return Math.floor(s/60) + "m ago";
-  if(s < 86400) return Math.floor(s/3600) + "h ago";
+  if(s < 60)     return "just now";
+  if(s < 3600)   return Math.floor(s/60) + "m ago";
+  if(s < 86400)  return Math.floor(s/3600) + "h ago";
   if(s < 604800) return Math.floor(s/86400) + "d ago";
   return formatDate(ts);
 }
 export function initials(name=""){
-  return name.trim().split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase() || "U";
+  return String(name).trim().split(/\s+/).slice(0,2)
+    .map(w => w[0] || "").join("").toUpperCase() || "U";
 }
 export function esc(s=""){
   return String(s).replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
   })[c]);
 }
 export function statusBadge(status){
   const s = String(status || "").toLowerCase();
-  const cls = ["pending","approved","rejected","win","loss","void","completed",
-               "processing","active","suspended"].includes(s) ? s : "void";
-  return `<span class="badge badge-${cls}">${esc(status||"—")}</span>`;
+  const map = {
+    pending:"pending", approved:"approved", rejected:"rejected",
+    win:"win", loss:"loss", void:"void", completed:"completed",
+    processing:"processing", active:"active", suspended:"suspended",
+    requested:"pending", clarification:"pending", cancelled:"void"
+  };
+  const cls = map[s] || "void";
+  return `<span class="badge badge-${cls}">${esc(status || "—")}</span>`;
 }
 
 // ---- Toast ----
@@ -60,8 +74,12 @@ export function toast(msg, type="", ms=3200){
   el.className = "toast " + type;
   el.textContent = msg;
   toastWrap.appendChild(el);
-  setTimeout(()=>{ el.style.opacity = "0"; el.style.transform="translateY(12px)"; el.style.transition=".2s"; }, ms-200);
-  setTimeout(()=> el.remove(), ms);
+  setTimeout(() => {
+    el.style.opacity = "0";
+    el.style.transform = "translateY(12px)";
+    el.style.transition = ".2s";
+  }, ms - 200);
+  setTimeout(() => el.remove(), ms);
 }
 
 // ---- Modal ----
@@ -72,17 +90,20 @@ export function openModal(html){
   ov.innerHTML = `<div class="modal">${html}</div>`;
   ov.addEventListener("click", e => { if(e.target === ov) closeModal(); });
   document.body.appendChild(ov);
-  requestAnimationFrame(()=> ov.classList.add("open"));
+  requestAnimationFrame(() => ov.classList.add("open"));
   const close = ov.querySelector("[data-close]");
   close && close.addEventListener("click", closeModal);
   return ov;
 }
 export function closeModal(){
   const ov = document.querySelector(".modal-overlay");
-  if(ov){ ov.classList.remove("open"); setTimeout(()=> ov.remove(), 250); }
+  if(ov){
+    ov.classList.remove("open");
+    setTimeout(() => ov.remove(), 250);
+  }
 }
-export function confirmDialog({title="Confirm", message="", confirmText="Confirm", danger=false}){
-  return new Promise(resolve=>{
+export function confirmDialog({ title="Confirm", message="", confirmText="Confirm", danger=false }){
+  return new Promise(resolve => {
     const ov = openModal(`
       <div class="modal-head">
         <h3>${esc(title)}</h3>
@@ -91,16 +112,16 @@ export function confirmDialog({title="Confirm", message="", confirmText="Confirm
       <p style="color:var(--gray-600);font-size:.92rem">${message}</p>
       <div class="modal-actions">
         <button class="btn btn-outline" data-no type="button">Cancel</button>
-        <button class="btn ${danger?"btn-danger":"btn-royal"}" data-yes type="button">${esc(confirmText)}</button>
+        <button class="btn ${danger ? "btn-danger" : "btn-royal"}" data-yes type="button">${esc(confirmText)}</button>
       </div>`);
-    ov.querySelector("[data-no]").onclick = () => { closeModal(); resolve(false); };
+    ov.querySelector("[data-no]").onclick  = () => { closeModal(); resolve(false); };
     ov.querySelector("[data-yes]").onclick = () => { closeModal(); resolve(true); };
   });
 }
 
 // ---- Skeleton / empty ----
 export function skeletonRows(n=3){
-  return Array.from({length:n}).map(()=>`
+  return Array.from({ length: n }).map(() => `
     <div style="padding:14px 0;border-bottom:1px solid var(--gray-100)">
       <div class="skeleton sk-line w60"></div>
       <div class="skeleton sk-line w40"></div>
@@ -114,120 +135,150 @@ export function setLoading(el, show=true){
   if(show) el.innerHTML = `<div class="loading-block"><div class="spinner dark"></div></div>`;
 }
 
-// ---- Header / nav rendering ----
+// ============================================
+// NAVIGATION
+// ============================================
 export const NAV = [
-  { href:"index.html",          label:"Home",        icon:"🏠" },
-  { href:"how-it-works.html",   label:"How It Works",icon:"⚙️" },
-  { href:"pool.html",           label:"Pool",        icon:"💧" },
-  { href:"bets.html",           label:"Bets",        icon:"🎯" },
-  { href:"comments.html",       label:"Community",   icon:"💬" },
-  { href:"faq.html",            label:"FAQ",         icon:"❓" }
-];
-export const USER_NAV = [
-  { href:"dashboard.html",   label:"Dashboard",  icon:"📊" },
-  { href:"pool.html",        label:"Pool",       icon:"💧" },
-  { href:"bets.html",        label:"Bets",       icon:"🎯" },
-  { href:"transactions.html",label:"Transactions",icon:"🧾" },
-  { href:"profile.html",     label:"Profile",    icon:"👤" }
-];
-export const ADMIN_NAV = [
-  { href:"/admin/index.html",        label:"Dashboard",   icon:"📊" },
-  { href:"/admin/users.html",        label:"Users",       icon:"👥" },
-  { href:"/admin/deposits.html",     label:"Deposits",    icon:"💵" },
-  { href:"/admin/withdrawals.html",  label:"Withdrawals", icon:"🏦" },
-  { href:"/admin/betting.html",      label:"Bet Manager", icon:"🎯" },
-  { href:"/admin/comments.html",     label:"Comments",    icon:"💬" },
-  { href:"/admin/settings.html",     label:"Settings",    icon:"⚙️" },
-  { href:"/admin/activity.html",     label:"Activity",    icon:"📜" }
+  { href:"index.html",         label:"Home",         icon:"🏠" },
+  { href:"how-it-works.html",  label:"How It Works", icon:"⚙️" },
+  { href:"pool.html",          label:"Pool",         icon:"💧" },
+  { href:"bets.html",          label:"Bets",         icon:"🎯" },
+  { href:"comments.html",      label:"Community",    icon:"💬" },
+  { href:"faq.html",           label:"FAQ",          icon:"❓" }
 ];
 
-function currentPath(){
-  const p = location.pathname.split("/").pop() || "index.html";
-  return p;
+export const USER_NAV = [
+  { href:"dashboard.html",    label:"Dashboard",    icon:"📊" },
+  { href:"pool.html",         label:"Pool",         icon:"💧" },
+  { href:"bets.html",         label:"Bets",         icon:"🎯" },
+  { href:"transactions.html", label:"Transactions", icon:"🧾" },
+  { href:"profile.html",      label:"Profile",      icon:"👤" }
+];
+
+export const ADMIN_NAV = [
+  { href:"index.html",       label:"Dashboard",   icon:"📊" },
+  { href:"users.html",       label:"Users",       icon:"👥" },
+  { href:"deposits.html",    label:"Deposits",    icon:"💵" },
+  { href:"withdrawals.html", label:"Withdrawals", icon:"🏦" },
+  { href:"betting.html",     label:"Bet Manager", icon:"🎯" },
+  { href:"cycles.html",      label:"Cycles",      icon:"📅" },
+  { href:"comments.html",    label:"Comments",    icon:"💬" },
+  { href:"settings.html",    label:"Settings",    icon:"⚙️" },
+  { href:"activity.html",    label:"Activity",    icon:"📜" }
+];
+
+function currentPage(){
+  return location.pathname.split("/").pop() || "index.html";
 }
 function inAdmin(){
-  return location.pathname.includes("/admin/");
+  return location.pathname.replace(/\\/g, "/").includes("/admin/");
+}
+function basePrefix(){
+  return inAdmin() ? "../" : "";
+}
+function isActive(href){
+  return href.split("/").pop() === currentPage();
 }
 
+// ============================================
+// HEADER
+// ============================================
 export function renderHeader({ user=null, isAdmin=false } = {}){
   const mount = document.getElementById("header");
   if(!mount) return;
-  const items = isAdmin && inAdmin()
-    ? ADMIN_NAV
-    : (user ? USER_NAV : NAV);
-  const active = currentPath();
 
-  const desktopLinks = items.map(it=>{
-    const href = it.href.startsWith("/") && !inAdmin()
-      ? it.href.slice(1) : it.href;
-    const isActive = active === href.split("/").pop();
-    return `<a class="nav-link ${isActive?"active":""}" href="${href}">${it.label}</a>`;
-  }).join("");
+  const adminView = !!(isAdmin && inAdmin());
+  const items = adminView ? ADMIN_NAV : (user ? USER_NAV : NAV);
+  const base = basePrefix();
+
+  const desktopLinks = items.map(it => `
+    <a class="nav-link ${isActive(it.href) ? "active" : ""}" href="${it.href}">
+      ${it.label}
+    </a>`).join("");
+
+  const drawerLinks = items.map(it => `
+    <a class="drawer-link ${isActive(it.href) ? "active" : ""}" href="${it.href}">
+      <span>${it.icon}</span>${it.label}
+    </a>`).join("");
 
   mount.innerHTML = `
     <header class="header">
       <div class="container header-inner">
-        <a href="${inAdmin()?"../index.html":"index.html"}" class="logo">
+        <a href="${base}index.html" class="logo">
           <span class="logo-mark">S</span>SU<span>RE</span>
         </a>
+
         <nav class="desktop-nav">${desktopLinks}</nav>
+
         <div class="header-actions desktop">
           ${user
-            ? `<span class="badge badge-active" style="color:#fff;background:rgba(255,255,255,.1)">${esc(user.name||user.email||"User")}</span>
-               <a class="btn btn-sm btn-outline-light" href="${isAdmin?"../":""}dashboard.html">Dashboard</a>
-               <button class="btn btn-sm btn-primary" id="logoutBtn">Logout</button>`
-            : `<a class="nav-link" href="${isAdmin?"../":""}login.html">Login</a>
-               <a class="btn btn-sm btn-primary" href="${isAdmin?"../":""}register.html">Create Account</a>`}
+            ? `<span class="badge badge-active" style="color:#fff;background:rgba(255,255,255,.1)">${esc(user.name || user.email || "User")}</span>
+               <a class="btn btn-sm btn-outline-light" href="${base}dashboard.html">Dashboard</a>
+               <button class="btn btn-sm btn-primary" id="logoutBtn" type="button">Logout</button>`
+            : `<a class="nav-link" href="${base}login.html">Login</a>
+               <a class="btn btn-sm btn-primary" href="${base}register.html">Create Account</a>`}
         </div>
-        <button class="hamburger" id="hamburger" aria-label="Menu"><span></span></button>
+
+        <button class="hamburger" id="hamburger" aria-label="Menu" type="button"><span></span></button>
       </div>
     </header>
 
     <div class="mobile-drawer" id="drawer">
       <div class="drawer-panel">
-        <button class="drawer-close" id="drawerClose" aria-label="Close">✕</button>
-        <a href="${inAdmin()?"../index.html":"index.html"}" class="logo">
+        <button class="drawer-close" id="drawerClose" aria-label="Close" type="button">✕</button>
+
+        <a href="${base}index.html" class="logo">
           <span class="logo-mark">S</span>SU<span>RE</span>
         </a>
-        ${items.map(it=>{
-          const href = it.href.startsWith("/") && !inAdmin() ? it.href.slice(1) : it.href;
-          const isActive = active === href.split("/").pop();
-          return `<a class="drawer-link ${isActive?"active":""}" href="${href}">
-            <span>${it.icon}</span>${it.label}</a>`;
-        }).join("")}
+
+        ${drawerLinks}
         <div class="drawer-divider"></div>
+
         ${user
-          ? `<a class="drawer-link" href="${isAdmin?"../":""}settings.html"><span>⚙️</span>Settings</a>
-             <button class="drawer-link" id="drawerLogout" style="text-align:left;width:100%"><span>🚪</span>Logout</button>`
-          : `<a class="drawer-link" href="${isAdmin?"../":""}login.html"><span>🔐</span>Login</a>
-             <a class="drawer-link" href="${isAdmin?"../":""}register.html"><span>✨</span>Create Account</a>`}
-        <div class="drawer-divider"></div>
-        <span class="badge badge-demo" style="align-self:flex-start">SIMULATED DATA</span>
+          ? `<a class="drawer-link" href="${base}settings.html"><span>⚙️</span>Settings</a>
+             <button class="drawer-link" id="drawerLogout" type="button" style="text-align:left;width:100%"><span>🚪</span>Logout</button>`
+          : `<a class="drawer-link" href="${base}login.html"><span>🔐</span>Login</a>
+             <a class="drawer-link" href="${base}register.html"><span>✨</span>Create Account</a>`}
       </div>
     </div>`;
 
   const drawer = document.getElementById("drawer");
-  document.getElementById("hamburger").onclick = ()=> drawer.classList.add("open");
-  document.getElementById("drawerClose").onclick = ()=> drawer.classList.remove("open");
-  drawer.addEventListener("click", e => { if(e.target===drawer) drawer.classList.remove("open"); });
+  const hamburger = document.getElementById("hamburger");
+  const drawerClose = document.getElementById("drawerClose");
 
-  const logout = ()=> import("./auth.js").then(m => m.logoutUser());
-  document.getElementById("logoutBtn")   && (document.getElementById("logoutBtn").onclick = logout);
-  document.getElementById("drawerLogout")&& (document.getElementById("drawerLogout").onclick = logout);
+  hamburger && (hamburger.onclick = () => drawer.classList.add("open"));
+  drawerClose && (drawerClose.onclick = () => drawer.classList.remove("open"));
+  drawer && drawer.addEventListener("click", e => {
+    if(e.target === drawer) drawer.classList.remove("open");
+  });
+
+  const logout = async () => {
+    const m = await import("./auth.js");
+    await m.logoutUser();
+  };
+  const lb = document.getElementById("logoutBtn");
+  const dl = document.getElementById("drawerLogout");
+  lb && (lb.onclick = logout);
+  dl && (dl.onclick = logout);
 }
 
+// ============================================
+// FOOTER (no demo badge)
+// ============================================
 export function renderFooter(){
   const mount = document.getElementById("footer");
   if(!mount) return;
-  const base = inAdmin() ? "../" : "";
+  const base = basePrefix();
+
   mount.innerHTML = `
     <footer class="footer">
       <div class="container">
         <div class="footer-grid">
           <div>
-            <a href="${base}index.html" class="logo"><span class="logo-mark">S</span>SU<span>RE</span></a>
+            <a href="${base}index.html" class="logo">
+              <span class="logo-mark">S</span>SU<span>RE</span>
+            </a>
             <p style="font-size:.85rem;max-width:280px">${APP_TAGLINE}</p>
-            <span class="badge badge-demo" style="margin-top:10px">DEMO — SIMULATED DATA</span>
           </div>
           <div>
             <h4>Platform</h4>
@@ -256,24 +307,26 @@ export function renderFooter(){
       </div>
     </footer>`;
 }
-const APP_TAGLINE = "SURE — Track the Pool. Follow Every Bet.";
 
+// ============================================
+// BOTTOM NAV (mobile)
+// ============================================
 export function renderBottomNav({ user=null, isAdmin=false } = {}){
   const mount = document.getElementById("bottomNav");
   if(!mount) return;
-  const items = (isAdmin && inAdmin()) ? ADMIN_NAV.slice(0,5)
+
+  const adminView = !!(isAdmin && inAdmin());
+  const items = adminView ? ADMIN_NAV.slice(0, 5)
               : (user ? USER_NAV : [
-                  {href:"index.html", label:"Home", icon:"🏠"},
-                  {href:"how-it-works.html", label:"How", icon:"⚙️"},
-                  {href:"pool.html", label:"Pool", icon:"💧"},
-                  {href:"bets.html", label:"Bets", icon:"🎯"},
-                  {href:"login.html", label:"Login", icon:"🔐"}
+                  { href:"index.html",        label:"Home",  icon:"🏠" },
+                  { href:"how-it-works.html", label:"How",   icon:"⚙️" },
+                  { href:"pool.html",         label:"Pool",  icon:"💧" },
+                  { href:"bets.html",         label:"Bets",  icon:"🎯" },
+                  { href:"login.html",        label:"Login", icon:"🔐" }
                 ]);
-  const active = currentPath();
-  mount.innerHTML = `<nav class="bottom-nav">${items.map(it=>{
-    const href = it.href.startsWith("/") && !inAdmin() ? it.href.slice(1) : it.href;
-    const isActive = active === href.split("/").pop();
-    return `<a href="${href}" class="${isActive?"active":""}">
-      <span class="ic">${it.icon}</span>${it.label}</a>`;
-  }).join("")}</nav>`;
+
+  mount.innerHTML = `<nav class="bottom-nav">${items.map(it => `
+    <a href="${it.href}" class="${isActive(it.href) ? "active" : ""}">
+      <span class="ic">${it.icon}</span>${it.label}
+    </a>`).join("")}</nav>`;
 }
