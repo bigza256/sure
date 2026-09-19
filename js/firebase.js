@@ -7,6 +7,10 @@ import {
   onAuthStateChanged,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
   signOut,
   sendPasswordResetEmail,
   updateProfile
@@ -51,6 +55,7 @@ export const storage = getStorage(app);
 // Re-export Firebase helpers so app modules import from one place
 export {
   onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider,
   signOut, sendPasswordResetEmail, updateProfile,
   ref, get, set, update, push, remove, query, orderByChild, equalTo, onValue,
   serverTimestamp, runTransaction,
