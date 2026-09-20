@@ -7,7 +7,6 @@ import {
   db,
 
   onAuthStateChanged,
-  authStateReady,
 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -27,6 +26,7 @@ import {
   set,
 
   authPersistence
+
 } from "./firebase.js";
 
 
@@ -67,13 +67,17 @@ const authReadyPromise = new Promise((resolve) => {
 // ============================================================
 
 function isMobile() {
+
   return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i
     .test(navigator.userAgent);
+
 }
 
 
 function appPath(file) {
+
   return `${SURE_BASE}${file}`;
+
 }
 
 
@@ -87,6 +91,7 @@ function showAuthError(message) {
 
   box.textContent = message;
   box.style.display = "flex";
+
 }
 
 
@@ -136,6 +141,7 @@ function getAuthErrorMessage(error) {
 
     "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
       "The Firebase API key is invalid."
+
   };
 
   return (
@@ -143,6 +149,7 @@ function getAuthErrorMessage(error) {
     error.message ||
     "Authentication failed."
   );
+
 }
 
 
@@ -158,9 +165,13 @@ export async function checkIsAdmin(uid) {
 
   try {
 
-    const snapshot = await get(
-      ref(db, `${ADMINS_PATH}/${uid}`)
-    );
+    const snapshot =
+      await get(
+        ref(
+          db,
+          `${ADMINS_PATH}/${uid}`
+        )
+      );
 
     return (
       snapshot.exists() &&
@@ -176,11 +187,14 @@ export async function checkIsAdmin(uid) {
 
     return false;
   }
+
 }
 
 
 export function currentIsAdmin() {
+
   return adminCache;
+
 }
 
 
@@ -223,7 +237,9 @@ function createProfile({
     provider,
 
     createdAt: Date.now()
+
   };
+
 }
 
 
@@ -237,18 +253,25 @@ export async function loadUserProfile(uid) {
     return null;
   }
 
-  const snapshot = await get(
-    ref(db, `${USERS_PATH}/${uid}`)
-  );
+  const snapshot =
+    await get(
+      ref(
+        db,
+        `${USERS_PATH}/${uid}`
+      )
+    );
 
   if (!snapshot.exists()) {
     return null;
   }
 
   return {
+
     uid,
     ...snapshot.val()
+
   };
+
 }
 
 
@@ -269,7 +292,6 @@ async function ensureUserProfile(user) {
     return existing;
   }
 
-
   let provider = "password";
 
   if (Array.isArray(user.providerData)) {
@@ -283,13 +305,14 @@ async function ensureUserProfile(user) {
     if (googleProvider) {
       provider = "google";
     }
-  }
 
+  }
 
   const profile =
     createProfile({
 
-      uid: user.uid,
+      uid:
+        user.uid,
 
       name:
         user.displayName ||
@@ -299,11 +322,12 @@ async function ensureUserProfile(user) {
         user.email ||
         "",
 
-      phone: "",
+      phone:
+        "",
 
       provider
-    });
 
+    });
 
   await set(
     ref(
@@ -313,13 +337,13 @@ async function ensureUserProfile(user) {
     profile
   );
 
-
   return profile;
+
 }
 
 
 // ============================================================
-// HANDLE SUSPENDED ACCOUNT
+// SUSPENDED ACCOUNT
 // ============================================================
 
 async function handleSuspendedAccount(profile) {
@@ -331,38 +355,34 @@ async function handleSuspendedAccount(profile) {
     return false;
   }
 
-
   try {
+
     await signOut(auth);
+
   } catch (error) {
+
     console.error(
       "SURE: Sign-out failed:",
       error
     );
-  }
 
+  }
 
   profileCache = null;
   adminCache = false;
 
-
   location.href =
-    appPath("login.html?suspended=1");
-
+    appPath(
+      "login.html?suspended=1"
+    );
 
   return true;
+
 }
 
 
 // ============================================================
-// PROCESS AUTH USER
-//
-// IMPORTANT:
-// Firebase Authentication is checked FIRST.
-// The RTDB profile is loaded AFTER authentication.
-//
-// A missing/slow profile must NEVER be treated as
-// "logged out".
+// PROCESS AUTHENTICATED USER
 // ============================================================
 
 async function processAuthenticatedUser(user) {
@@ -373,42 +393,42 @@ async function processAuthenticatedUser(user) {
     adminCache = false;
 
     return null;
+
   }
 
-
   console.log(
-    "SURE: Authenticated Firebase user:",
+    "SURE: Firebase authenticated:",
     user.uid
   );
-
 
   try {
 
     const profile =
       await ensureUserProfile(user);
 
-
     if (!profile) {
+
       throw new Error(
         "Could not load or create SURE user profile."
       );
-    }
 
+    }
 
     if (
       await handleSuspendedAccount(profile)
     ) {
-      return null;
-    }
 
+      return null;
+
+    }
 
     profileCache =
       profile;
 
-
     adminCache =
-      await checkIsAdmin(user.uid);
-
+      await checkIsAdmin(
+        user.uid
+      );
 
     return profile;
 
@@ -419,157 +439,26 @@ async function processAuthenticatedUser(user) {
       error
     );
 
-    /*
-     * VERY IMPORTANT:
-     *
-     * The Firebase user is STILL authenticated.
-     *
-     * Therefore we do NOT redirect to login here.
-     */
-
     profileCache = null;
     adminCache = false;
 
     throw error;
+
   }
+
 }
 
 
 // ============================================================
-// FIREBASE AUTH INITIALIZATION
+// AUTH STATE INITIALIZATION
 //
-// This waits ONLY for Firebase Authentication.
+// IMPORTANT:
 //
-// It does NOT wait for the database profile.
-// ============================================================
-
-(async () => {
-
-  try {
-
-    await authPersistence;
-
-    /*
-     * Firebase's authStateReady() waits until Firebase
-     * has finished restoring the persisted login session.
-     */
-    await authStateReady(auth);
-
-
-    authInitialized = true;
-
-
-    const user =
-      auth.currentUser;
-
-
-    console.log(
-      "SURE: Firebase auth initialized:",
-      user?.uid || "SIGNED OUT"
-    );
-
-
-    /*
-     * Resolve immediately based ONLY on Firebase Auth.
-     *
-     * This is the critical fix.
-     */
-    resolveAuthReady(user || null);
-
-
-    /*
-     * Now load the profile in the background.
-     *
-     * This must NOT control whether Firebase considers
-     * the user authenticated.
-     */
-    if (user) {
-
-      try {
-
-        const profile =
-          await processAuthenticatedUser(user);
-
-
-        window.dispatchEvent(
-          new CustomEvent(
-            "sure:auth",
-            {
-              detail: {
-                user,
-                profile: profile || null,
-                isAdmin: adminCache
-              }
-            }
-          )
-        );
-
-      } catch (error) {
-
-        console.error(
-          "SURE: Initial profile load failed:",
-          error
-        );
-
-
-        window.dispatchEvent(
-          new CustomEvent(
-            "sure:auth-error",
-            {
-              detail: error
-            }
-          )
-        );
-      }
-
-    } else {
-
-      window.dispatchEvent(
-        new CustomEvent(
-          "sure:auth",
-          {
-            detail: {
-              user: null,
-              profile: null,
-              isAdmin: false
-            }
-          }
-        )
-      );
-    }
-
-  } catch (error) {
-
-    console.error(
-      "SURE: Firebase Auth initialization failed:",
-      error
-    );
-
-
-    authInitializationError =
-      error;
-
-    authInitialized = true;
-
-
-    resolveAuthReady(null);
-
-
-    window.dispatchEvent(
-      new CustomEvent(
-        "sure:auth-error",
-        {
-          detail: error
-        }
-      )
-    );
-  }
-
-})();
-
-
-// ============================================================
-// LISTEN FOR FUTURE AUTH CHANGES
+// Firebase Auth itself determines whether the user
+// is logged in.
+//
+// RTDB profile loading happens AFTER this.
+//
 // ============================================================
 
 onAuthStateChanged(
@@ -577,16 +466,36 @@ onAuthStateChanged(
   async (user) => {
 
     console.log(
-      "SURE: Auth state changed:",
+      "SURE: Auth state:",
       user?.uid || "SIGNED OUT"
     );
 
+    /*
+     * Resolve the authentication promise
+     * immediately on the FIRST Firebase auth event.
+     *
+     * We do NOT wait for the database.
+     */
+
+    if (!authInitialized) {
+
+      authInitialized = true;
+
+      resolveAuthReady(
+        user || null
+      );
+
+    }
+
+
+    /*
+     * No authenticated user.
+     */
 
     if (!user) {
 
       profileCache = null;
       adminCache = false;
-
 
       window.dispatchEvent(
         new CustomEvent(
@@ -601,22 +510,23 @@ onAuthStateChanged(
         )
       );
 
-
       return;
+
     }
 
 
     /*
      * User is authenticated.
      *
-     * Load/update profile separately.
+     * Profile loading is separate.
      */
 
     try {
 
       const profile =
-        await processAuthenticatedUser(user);
-
+        await processAuthenticatedUser(
+          user
+        );
 
       window.dispatchEvent(
         new CustomEvent(
@@ -624,8 +534,10 @@ onAuthStateChanged(
           {
             detail: {
               user,
-              profile: profile || null,
-              isAdmin: adminCache
+              profile:
+                profile || null,
+              isAdmin:
+                adminCache
             }
           }
         )
@@ -634,16 +546,9 @@ onAuthStateChanged(
     } catch (error) {
 
       console.error(
-        "SURE: Auth profile update failed:",
+        "SURE: Profile loading failed:",
         error
       );
-
-
-      /*
-       * DO NOT sign the user out.
-       *
-       * DO NOT redirect to login.
-       */
 
       window.dispatchEvent(
         new CustomEvent(
@@ -653,7 +558,9 @@ onAuthStateChanged(
           }
         )
       );
+
     }
+
   }
 );
 
@@ -671,13 +578,13 @@ onAuthStateChanged(
     const result =
       await getRedirectResult(auth);
 
-
     if (result?.user) {
 
       console.log(
         "SURE: Google redirect completed:",
         result.user.uid
       );
+
     }
 
   } catch (error) {
@@ -690,6 +597,7 @@ onAuthStateChanged(
     showAuthError(
       getAuthErrorMessage(error)
     );
+
   }
 
 })();
@@ -702,24 +610,28 @@ onAuthStateChanged(
 export function whenAuthReady() {
 
   return authReadyPromise;
+
 }
 
 
 export function currentUser() {
 
   return auth.currentUser;
+
 }
 
 
 export function currentProfile() {
 
   return profileCache;
+
 }
 
 
 export function isAuthReady() {
 
   return authInitialized;
+
 }
 
 
@@ -736,7 +648,6 @@ export async function registerUser({
 
   await authPersistence;
 
-
   const credential =
     await createUserWithEmailAndPassword(
       auth,
@@ -748,10 +659,8 @@ export async function registerUser({
       password
     );
 
-
   const user =
     credential.user;
-
 
   if (name) {
 
@@ -762,8 +671,8 @@ export async function registerUser({
           String(name).trim()
       }
     );
-  }
 
+  }
 
   const profile =
     createProfile({
@@ -781,8 +690,8 @@ export async function registerUser({
 
       provider:
         "password"
-    });
 
+    });
 
   await set(
     ref(
@@ -792,15 +701,14 @@ export async function registerUser({
     profile
   );
 
-
   profileCache =
     profile;
 
   adminCache =
     false;
 
-
   return profile;
+
 }
 
 
@@ -815,7 +723,6 @@ export async function loginUser(
 
   await authPersistence;
 
-
   const credential =
     await signInWithEmailAndPassword(
       auth,
@@ -827,54 +734,71 @@ export async function loginUser(
       password
     );
 
-
   const user =
     credential.user;
 
-
   console.log(
-    "SURE: Login successful:",
+    "SURE: LOGIN SUCCESS:",
     user.uid
   );
 
-
   /*
-   * Authentication has succeeded.
+   * IMPORTANT:
    *
-   * Now load the profile.
+   * Firebase authentication has already succeeded.
+   *
+   * Do not sign out merely because the RTDB profile
+   * has a problem.
    */
 
-  const profile =
-    await ensureUserProfile(user);
+  try {
 
+    const profile =
+      await ensureUserProfile(user);
 
-  if (!profile) {
+    if (!profile) {
 
-    throw new Error(
-      "Authentication succeeded, but the SURE profile could not be loaded."
+      throw new Error(
+        "Authentication succeeded, but the SURE profile could not be loaded."
+      );
+
+    }
+
+    if (
+      await handleSuspendedAccount(profile)
+    ) {
+
+      throw new Error(
+        "This account has been suspended."
+      );
+
+    }
+
+    profileCache =
+      profile;
+
+    adminCache =
+      await checkIsAdmin(
+        user.uid
+      );
+
+    return profile;
+
+  } catch (error) {
+
+    console.error(
+      "SURE: Login succeeded but profile processing failed:",
+      error
     );
+
+    /*
+     * We intentionally DO NOT sign out.
+     */
+
+    throw error;
+
   }
 
-
-  if (
-    await handleSuspendedAccount(profile)
-  ) {
-
-    throw new Error(
-      "This account has been suspended."
-    );
-  }
-
-
-  profileCache =
-    profile;
-
-
-  adminCache =
-    await checkIsAdmin(user.uid);
-
-
-  return profile;
 }
 
 
@@ -886,15 +810,12 @@ export async function loginWithGoogle() {
 
   await authPersistence;
 
-
   const provider =
     new GoogleAuthProvider();
-
 
   provider.setCustomParameters({
     prompt: "select_account"
   });
-
 
   if (isMobile()) {
 
@@ -903,12 +824,9 @@ export async function loginWithGoogle() {
       provider
     );
 
-    /*
-     * Browser leaves this page.
-     */
     return null;
-  }
 
+  }
 
   const credential =
     await signInWithPopup(
@@ -916,22 +834,19 @@ export async function loginWithGoogle() {
       provider
     );
 
-
   const user =
     credential.user;
 
-
   const profile =
     await ensureUserProfile(user);
-
 
   if (!profile) {
 
     throw new Error(
       "Google authentication succeeded, but the SURE profile could not be created."
     );
-  }
 
+  }
 
   if (
     await handleSuspendedAccount(profile)
@@ -940,18 +855,19 @@ export async function loginWithGoogle() {
     throw new Error(
       "This account has been suspended."
     );
-  }
 
+  }
 
   profileCache =
     profile;
 
-
   adminCache =
-    await checkIsAdmin(user.uid);
-
+    await checkIsAdmin(
+      user.uid
+    );
 
   return profile;
+
 }
 
 
@@ -963,13 +879,14 @@ export async function logoutUser() {
 
   await signOut(auth);
 
-
   profileCache = null;
   adminCache = false;
 
-
   location.href =
-    appPath("login.html");
+    appPath(
+      "login.html"
+    );
+
 }
 
 
@@ -986,14 +903,12 @@ export async function resetPassword(email) {
       .trim()
       .toLowerCase()
   );
+
 }
 
 
 // ============================================================
 // REQUIRE AUTH
-//
-// IMPORTANT:
-// Only Firebase Auth decides whether the user is logged in.
 // ============================================================
 
 export async function requireAuth(
@@ -1001,58 +916,46 @@ export async function requireAuth(
 ) {
 
   /*
-   * Wait only until Firebase Auth has restored the session.
+   * Wait ONLY for Firebase Auth.
    */
+
   const user =
     await whenAuthReady();
 
-
   console.log(
     "SURE requireAuth:",
-    {
-      firebaseUser:
-        user?.uid || null,
-
-      currentUser:
-        auth.currentUser?.uid || null,
-
-      cachedProfile:
-        profileCache?.uid || null
-    }
+    user?.uid || "NO USER"
   );
 
-
   /*
-   * ACTUAL authentication check.
+   * This is the ONLY initial login check.
    */
+
   if (!user || !auth.currentUser) {
 
     console.warn(
-      "SURE: No authenticated Firebase user. Redirecting to login."
+      "SURE: No Firebase session."
     );
-
 
     location.href =
       redirect.startsWith("/")
         ? redirect
         : appPath(redirect);
 
-
     throw new Error(
       "Not authenticated."
     );
-  }
 
+  }
 
   /*
    * Firebase says the user is authenticated.
    *
-   * Now load the SURE profile.
+   * Now obtain their SURE profile.
    */
 
   let profile =
     profileCache;
-
 
   if (
     !profile ||
@@ -1060,22 +963,19 @@ export async function requireAuth(
   ) {
 
     profile =
-      await ensureUserProfile(user);
-  }
+      await ensureUserProfile(
+        user
+      );
 
+  }
 
   if (!profile) {
 
-    /*
-     * DO NOT redirect to login.
-     *
-     * The user IS authenticated.
-     */
     throw new Error(
       "You are authenticated, but your SURE profile could not be loaded."
     );
-  }
 
+  }
 
   if (
     await handleSuspendedAccount(profile)
@@ -1084,21 +984,19 @@ export async function requireAuth(
     throw new Error(
       "Account suspended."
     );
-  }
 
+  }
 
   profileCache =
     profile;
 
-
-  /*
-   * Make sure admin status is available.
-   */
   adminCache =
-    await checkIsAdmin(user.uid);
-
+    await checkIsAdmin(
+      user.uid
+    );
 
   return profile;
+
 }
 
 
@@ -1113,12 +1011,10 @@ export async function requireAdmin() {
       "login.html"
     );
 
-
   const isAdmin =
     await checkIsAdmin(
       profile.uid
     );
-
 
   if (!isAdmin) {
 
@@ -1127,18 +1023,17 @@ export async function requireAdmin() {
         "dashboard.html"
       );
 
-
     throw new Error(
       "Administrator access required."
     );
-  }
 
+  }
 
   adminCache =
     true;
 
-
   return profile;
+
 }
 
 
@@ -1150,31 +1045,25 @@ async function handleEntryPage() {
 
   try {
 
-    /*
-     * Wait only for Firebase authentication.
-     */
     const user =
       await whenAuthReady();
-
 
     if (!user) {
       return;
     }
 
-
     const pathname =
       location.pathname;
 
-
     const isLoginPage =
-      /\/login\.html$/i
-        .test(pathname);
-
+      /\/login\.html$/i.test(
+        pathname
+      );
 
     const isRegisterPage =
-      /\/register\.html$/i
-        .test(pathname);
-
+      /\/register\.html$/i.test(
+        pathname
+      );
 
     const isRootPage =
       pathname === "/sure/" ||
@@ -1182,73 +1071,62 @@ async function handleEntryPage() {
         "/sure/index.html"
       );
 
-
     if (
       !isLoginPage &&
       !isRegisterPage &&
       !isRootPage
     ) {
+
       return;
+
     }
-
-
-    /*
-     * We have Firebase Auth.
-     *
-     * Get profile/admin status before redirecting.
-     */
 
     let profile =
       profileCache;
 
-
     if (!profile) {
 
       profile =
-        await ensureUserProfile(user);
+        await ensureUserProfile(
+          user
+        );
 
       profileCache =
         profile;
-    }
 
+    }
 
     if (!profile) {
       return;
     }
 
-
     adminCache =
-      await checkIsAdmin(user.uid);
+      await checkIsAdmin(
+        user.uid
+      );
 
-
-    if (adminCache) {
-
-      location.href =
-        appPath(
-          "admin/index.html"
-        );
-
-    } else {
-
-      location.href =
-        appPath(
-          "dashboard.html"
-        );
-    }
-
+    location.href =
+      adminCache
+        ? appPath(
+            "admin/index.html"
+          )
+        : appPath(
+            "dashboard.html"
+          );
 
   } catch (error) {
 
     console.error(
-      "SURE: Entry-page redirect failed:",
+      "SURE: Entry redirect failed:",
       error
     );
 
     /*
-     * IMPORTANT:
-     * Do not redirect to login here.
+     * Do NOT redirect to login here.
      */
+
   }
+
 }
 
 
