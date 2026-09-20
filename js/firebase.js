@@ -6,14 +6,12 @@ import {
   initializeApp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 
-
 import {
   getAuth,
   setPersistence,
   browserLocalPersistence,
 
   onAuthStateChanged,
-  authStateReady,
 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -29,7 +27,6 @@ import {
   updateProfile
 
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
 
 import {
   getDatabase,
@@ -119,7 +116,6 @@ export const authPersistence =
 export {
 
   onAuthStateChanged,
-  authStateReady,
 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
