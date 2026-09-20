@@ -9,7 +9,7 @@ import {
   ref, get, set
 } from "./firebase.js";
 
-const USERS = "users";
+const USERS  = "users";
 const ADMINS = "admins";
 
 let _profileCache = null;
@@ -42,6 +42,25 @@ export function currentIsAdmin(){
 }
 
 // ---------------------------------------------------------
+// Minimal profile created at signup.
+// Financial fields (wallets, riskState, currentCycleId)
+// are created later by the admin deposit-approval workflow,
+// which the security rules permit.
+// ---------------------------------------------------------
+function newProfile({ uid, name, email, phone, provider }){
+  return {
+    uid,
+    name:  (name  || "User").trim(),
+    email: (email || "").trim().toLowerCase(),
+    phone: (phone || "").trim(),
+    role:   "user",
+    status: "active",
+    provider,
+    createdAt: Date.now()
+  };
+}
+
+// ---------------------------------------------------------
 // Handle Google redirect result (mobile flow)
 // Runs once per page load. If the user just came back from
 // a redirect sign-in, this resolves the credential, creates
@@ -56,24 +75,13 @@ export function currentIsAdmin(){
     let profile = await loadUserProfile(uid);
 
     if(!profile){
-      profile = {
+      profile = newProfile({
         uid,
-        name: result.user.displayName || "Google User",
-        email: result.user.email || "",
+        name:  result.user.displayName || "Google User",
+        email: result.user.email       || "",
         phone: "",
-        role: "user",
-        status: "active",
-        verificationStatus: "unverified",
-        provider: "google",
-        createdAt: Date.now(),
-        wallets: {
-          activeAllocation: 0, protectedReserve: 0, availableEarnings: 0,
-          totalContribution: 0, totalEarningsGenerated: 0,
-          totalWithdrawn: 0, companyShareContributed: 0
-        },
-        riskState: { level: "NORMAL", reservePercent: 100, lastEvaluatedAt: Date.now() },
-        currentCycleId: ""
-      };
+        provider: "google"
+      });
       await set(ref(db, `${USERS}/${uid}`), profile);
     }
 
@@ -84,7 +92,6 @@ export function currentIsAdmin(){
     }
 
     const admin = await checkIsAdmin(uid);
-    // Only redirect if we're still on the login or register page.
     const page = location.pathname.split("/").pop();
     if(page === "login.html" || page === "register.html" || page === ""){
       location.href = admin ? "admin/index.html" : "dashboard.html";
@@ -136,28 +143,11 @@ export async function registerUser({ name, phone, email, password }){
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   await updateProfile(cred.user, { displayName: name });
 
-  const profile = {
+  const profile = newProfile({
     uid: cred.user.uid,
-    name: name.trim(),
-    email: email.trim().toLowerCase(),
-    phone: phone.trim(),
-    role: "user",                 // hardcoded; admins must be set in Firebase
-    status: "active",
-    verificationStatus: "unverified",
-    provider: "password",
-    createdAt: Date.now(),
-    wallets: {
-      activeAllocation: 0,
-      protectedReserve: 0,
-      availableEarnings: 0,
-      totalContribution: 0,
-      totalEarningsGenerated: 0,
-      totalWithdrawn: 0,
-      companyShareContributed: 0
-    },
-    riskState: { level: "NORMAL", reservePercent: 100, lastEvaluatedAt: Date.now() },
-    currentCycleId: ""
-  };
+    name, email, phone,
+    provider: "password"
+  });
 
   await set(ref(db, `${USERS}/${cred.user.uid}`), profile);
   _profileCache = profile;
@@ -183,37 +173,22 @@ export async function loginWithGoogle(){
   provider.setCustomParameters({ prompt: "select_account" });
 
   if(isMobile()){
-    // Redirect flow — the getRedirectResult handler at the top
-    // of this module finishes the sign-in when the user returns.
-    // The page navigates away here; this function returns null.
     await signInWithRedirect(auth, provider);
     return null;
   }
 
-  // Desktop popup flow
   const cred = await signInWithPopup(auth, provider);
   const user = cred.user;
 
   let profile = await loadUserProfile(user.uid);
   if(!profile){
-    profile = {
+    profile = newProfile({
       uid: user.uid,
-      name: user.displayName || "Google User",
-      email: user.email || "",
+      name:  user.displayName || "Google User",
+      email: user.email       || "",
       phone: "",
-      role: "user",
-      status: "active",
-      verificationStatus: "unverified",
-      provider: "google",
-      createdAt: Date.now(),
-      wallets: {
-        activeAllocation: 0, protectedReserve: 0, availableEarnings: 0,
-        totalContribution: 0, totalEarningsGenerated: 0,
-        totalWithdrawn: 0, companyShareContributed: 0
-      },
-      riskState: { level: "NORMAL", reservePercent: 100, lastEvaluatedAt: Date.now() },
-      currentCycleId: ""
-    };
+      provider: "google"
+    });
     await set(ref(db, `${USERS}/${user.uid}`), profile);
   }
 
@@ -244,10 +219,7 @@ export async function resetPassword(email){
 // ---------------------------------------------------------
 export async function requireAuth(redirect="login.html"){
   const profile = await whenAuthReady();
-  if(!profile){
-    location.href = redirect;
-    throw new Error("Not authenticated");
-  }
+  if(!profile){ location.href = redirect; throw new Error("Not authenticated"); }
   if(profile.status === "suspended"){
     await signOut(auth);
     location.href = "login.html?suspended=1";
