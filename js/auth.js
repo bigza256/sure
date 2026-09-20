@@ -1,683 +1,1012 @@
-// ============================================
-// SURE — auth + user profile helpers
-// Track the Pool. Follow Every Bet.
-// ============================================
+// ============================================================
+// SURE — Authentication
+// ============================================================
 
 import {
-  auth, db, onAuthStateChanged, createUserWithEmailAndPassword,
-  signInWithEmailAndPassword, signInWithPopup, signInWithRedirect,
-  getRedirectResult, GoogleAuthProvider,
-  signOut, sendPasswordResetEmail, updateProfile,
-  ref, get, set
+  auth,
+  db,
+
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
+
+  signOut,
+  sendPasswordResetEmail,
+  updateProfile,
+
+  ref,
+  get,
+  set,
+
+  authPersistence
 } from "./firebase.js";
 
-const USERS  = "users";
+
+// ============================================================
+// PATHS
+// ============================================================
+
+const USERS = "users";
 const ADMINS = "admins";
 
-let _profileCache = null;
-let _isAdminCache = false;
 
-let _resolveReady;
-let _readyResolved = false;
+// ============================================================
+// STATE
+// ============================================================
 
-const _ready = new Promise(resolve => {
-  _resolveReady = resolve;
+let currentProfileCache = null;
+let currentAdminCache = false;
+let authReady = false;
+
+let resolveAuthReady;
+
+const authReadyPromise = new Promise((resolve) => {
+  resolveAuthReady = resolve;
 });
 
-// ---------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------
 
-function isMobile(){
+// ============================================================
+// PATH HELPER
+// ============================================================
+
+function appPath(file) {
+
+  const base = "/sure/";
+
+  return `${base}${file}`;
+
+}
+
+
+// ============================================================
+// MOBILE DETECTION
+// ============================================================
+
+function isMobile() {
+
   return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i
     .test(navigator.userAgent);
+
 }
 
 
-// ---------------------------------------------------------
-// Admin check
-// ---------------------------------------------------------
+// ============================================================
+// ADMIN CHECK
+// ============================================================
 
-/**
- * Reads admins/{uid}.
- *
- * Returns true only when the database value is exactly true.
- *
- * The database rules allow the user to read their own admin
- * record, so this works with the current rules.
- */
-async function checkIsAdmin(uid){
-  if(!uid) return false;
+export async function checkIsAdmin(uid) {
 
-  try{
-    const snap = await get(ref(db, `${ADMINS}/${uid}`));
-
-    return snap.exists() && snap.val() === true;
-
-  }catch(err){
-    console.warn("Admin check failed:", err);
+  if (!uid) {
     return false;
   }
+
+  try {
+
+    const snapshot = await get(
+      ref(db, `${ADMINS}/${uid}`)
+    );
+
+    return (
+      snapshot.exists() &&
+      snapshot.val() === true
+    );
+
+  } catch (error) {
+
+    console.error(
+      "SURE: Admin check failed:",
+      error
+    );
+
+    return false;
+
+  }
+
 }
 
 
-// ---------------------------------------------------------
-// Public admin state
-// ---------------------------------------------------------
+// ============================================================
+// CURRENT ADMIN STATUS
+// ============================================================
 
-export function currentIsAdmin(){
-  return _isAdminCache;
+export function currentIsAdmin() {
+
+  return currentAdminCache;
+
 }
 
 
-// ---------------------------------------------------------
-// Minimal user profile
-//
-// Normal users can create their own initial profile.
-//
-// Admin-only fields are NOT created here:
-//
-//   wallets
-//   riskState
-//   currentCycleId
-//   verificationStatus
-//   canComment
-//
-// Those are controlled by the database rules and are created/
-// updated by the appropriate admin workflows.
-// ---------------------------------------------------------
+// ============================================================
+// CREATE PROFILE OBJECT
+// ============================================================
 
-function newProfile({
+function createProfile({
   uid,
   name,
   email,
-  phone,
-  provider
-}){
+  phone = "",
+  provider = "password"
+}) {
 
   return {
-    uid,
 
-    name: (name || "User").trim(),
+    uid: uid,
 
-    email: (email || "")
-      .trim()
-      .toLowerCase(),
+    name:
+      String(name || "User")
+        .trim()
+        .slice(0, 100),
 
-    phone: (phone || "").trim(),
+    email:
+      String(email || "")
+        .trim()
+        .toLowerCase(),
+
+    phone:
+      String(phone || "")
+        .trim(),
 
     role: "user",
 
     status: "active",
 
-    provider,
+    provider: provider,
 
     createdAt: Date.now()
+
   };
+
 }
 
 
-// ---------------------------------------------------------
-// Load user profile
-// ---------------------------------------------------------
+// ============================================================
+// LOAD PROFILE
+// ============================================================
 
-export async function loadUserProfile(uid){
+export async function loadUserProfile(uid) {
 
-  if(!uid) return null;
-
-  try{
-
-    const snap = await get(
-      ref(db, `${USERS}/${uid}`)
-    );
-
-    if(!snap.exists()){
-      return null;
-    }
-
-    return {
-      uid,
-      ...snap.val()
-    };
-
-  }catch(err){
-
-    console.error(
-      "Failed to load user profile:",
-      err
-    );
-
-    throw err;
+  if (!uid) {
+    return null;
   }
+
+  const snapshot = await get(
+    ref(db, `${USERS}/${uid}`)
+  );
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return {
+    uid: uid,
+    ...snapshot.val()
+  };
+
 }
 
 
-// ---------------------------------------------------------
-// Create missing Google profile
-// ---------------------------------------------------------
+// ============================================================
+// ENSURE PROFILE EXISTS
+// ============================================================
 
-async function ensureGoogleProfile(user){
+async function ensureUserProfile(user) {
 
-  if(!user) return null;
+  if (!user || !user.uid) {
+    return null;
+  }
 
-  const uid = user.uid;
+  let profile =
+    await loadUserProfile(user.uid);
 
-  let profile = await loadUserProfile(uid);
 
-  // Existing profile
-  if(profile){
+  // Profile already exists.
+
+  if (profile) {
     return profile;
   }
 
-  // New Google user
-  profile = newProfile({
-    uid,
-    name: user.displayName || "Google User",
-    email: user.email || "",
+
+  // Determine provider.
+
+  let provider = "password";
+
+  if (user.providerData?.length) {
+
+    const providerId =
+      user.providerData[0].providerId;
+
+    if (providerId === "google.com") {
+      provider = "google";
+    }
+
+  }
+
+
+  // Create missing profile.
+
+  profile = createProfile({
+
+    uid: user.uid,
+
+    name:
+      user.displayName || "User",
+
+    email:
+      user.email || "",
+
     phone: "",
-    provider: "google"
+
+    provider: provider
+
   });
 
-  /*
-   * This matches the database rule:
-   *
-   * !data.exists() && auth.uid === $uid
-   *
-   * Therefore a normal authenticated Google user can create
-   * their own initial profile.
-   */
+
   await set(
-    ref(db, `${USERS}/${uid}`),
+    ref(db, `${USERS}/${user.uid}`),
     profile
   );
 
+
   return profile;
+
 }
 
 
-// ---------------------------------------------------------
-// Handle suspended account
-// ---------------------------------------------------------
+// ============================================================
+// SUSPENDED ACCOUNT
+// ============================================================
 
-async function handleSuspendedProfile(profile){
+async function checkSuspended(profile) {
 
-  if(
-    profile &&
-    profile.status === "suspended"
-  ){
-
-    await signOut(auth);
-
-    location.href =
-      "login.html?suspended=1";
-
-    throw new Error("Account suspended");
+  if (!profile) {
+    return false;
   }
 
-  return profile;
+  if (profile.status !== "suspended") {
+    return false;
+  }
+
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error(error);
+  }
+
+  location.href =
+    appPath("login.html?suspended=1");
+
+  return true;
+
 }
 
 
-// ---------------------------------------------------------
-// Redirect result handler
-//
-// Used mainly for mobile Google authentication.
-// ---------------------------------------------------------
+// ============================================================
+// PROCESS AUTH USER
+// ============================================================
 
-(async () => {
+async function processUser(user) {
 
-  try{
+  // User is genuinely signed out.
 
-    const result = await getRedirectResult(auth);
+  if (!user) {
 
-    if(!result || !result.user){
-      return;
-    }
+    currentProfileCache = null;
 
-    const user = result.user;
+    currentAdminCache = false;
 
-    const profile =
-      await ensureGoogleProfile(user);
+    return null;
 
-    await handleSuspendedProfile(profile);
+  }
 
-    _profileCache = profile;
 
-    _isAdminCache =
-      await checkIsAdmin(user.uid);
+  console.log(
+    "SURE: Firebase user:",
+    user.uid
+  );
 
-    /*
-     * Redirect only when the user is currently on an
-     * authentication page.
-     */
-    const page =
-      location.pathname
-        .split("/")
-        .pop();
 
-    if(
-      page === "login.html" ||
-      page === "register.html" ||
-      page === ""
-    ){
+  // Make sure database profile exists.
 
-      location.href =
-        _isAdminCache
-          ? "admin/index.html"
-          : "dashboard.html";
-    }
+  const profile =
+    await ensureUserProfile(user);
 
-  }catch(err){
 
-    console.error(
-      "Google redirect sign-in failed:",
-      err
+  if (!profile) {
+
+    throw new Error(
+      "Could not load your SURE profile."
     );
 
-    const errBox =
-      document.getElementById("formError");
+  }
 
-    if(errBox){
 
-      const map = {
+  // Check suspension.
 
-        "auth/unauthorized-domain":
-          "This domain is not authorized in Firebase.",
+  if (await checkSuspended(profile)) {
 
-        "auth/operation-not-allowed":
-          "Google sign-in is not enabled.",
+    currentProfileCache = null;
+    currentAdminCache = false;
 
-        "auth/account-exists-with-different-credential":
-          "An account with this email already exists.",
+    return null;
 
-        "auth/popup-closed-by-user":
-          "Google sign-in was cancelled.",
+  }
 
-        "auth/network-request-failed":
-          "Network error. Please check your internet connection."
-      };
 
-      errBox.textContent =
-        map[err.code] ||
-        err.message ||
-        "Google sign-in failed.";
+  // Check admin.
 
-      errBox.style.display = "flex";
+  const isAdmin =
+    await checkIsAdmin(user.uid);
+
+
+  // Update cache.
+
+  currentProfileCache = profile;
+
+  currentAdminCache = isAdmin;
+
+
+  return profile;
+
+}
+
+
+// ============================================================
+// AUTH STATE LISTENER
+// ============================================================
+
+onAuthStateChanged(
+  auth,
+
+  async (user) => {
+
+    try {
+
+      const profile =
+        await processUser(user);
+
+
+      // Mark authentication as ready.
+
+      if (!authReady) {
+
+        authReady = true;
+
+        resolveAuthReady(profile);
+
+      }
+
+
+      // Notify application.
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "sure:auth",
+          {
+            detail: {
+              user: user,
+              profile: profile,
+              isAdmin: currentAdminCache
+            }
+          }
+        )
+      );
+
+
+    } catch (error) {
+
+      console.error(
+        "SURE: Auth initialization error:",
+        error
+      );
+
+
+      if (!authReady) {
+
+        authReady = true;
+
+        resolveAuthReady(null);
+
+      }
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "sure:auth-error",
+          {
+            detail: error
+          }
+        )
+      );
+
     }
+
+  }
+);
+
+
+// ============================================================
+// GOOGLE REDIRECT RESULT
+// ============================================================
+
+(async function handleGoogleRedirect() {
+
+  try {
+
+    await authPersistence;
+
+    const result =
+      await getRedirectResult(auth);
+
+
+    if (result?.user) {
+
+      console.log(
+        "SURE: Google redirect completed:",
+        result.user.uid
+      );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "SURE: Google redirect error:",
+      error
+    );
+
+    showError(
+      getAuthErrorMessage(error)
+    );
+
   }
 
 })();
 
 
-// ---------------------------------------------------------
-// Auth state watcher
-// ---------------------------------------------------------
+// ============================================================
+// WAIT FOR AUTH
+// ============================================================
 
-onAuthStateChanged(auth, async (user) => {
+export function whenAuthReady() {
 
-  try{
+  return authReadyPromise;
 
-    if(user){
-
-      let profile =
-        await loadUserProfile(user.uid);
-
-      /*
-       * If Firebase Auth says the user is signed in but the
-       * profile doesn't exist, don't immediately treat the
-       * user as fully authenticated at the application level.
-       *
-       * Google redirect flow creates the profile separately.
-       */
-      if(profile){
-
-        _profileCache = profile;
-
-        _isAdminCache =
-          await checkIsAdmin(user.uid);
-
-      }else{
-
-        _profileCache = null;
-        _isAdminCache = false;
-      }
-
-    }else{
-
-      _profileCache = null;
-      _isAdminCache = false;
-    }
-
-  }catch(err){
-
-    console.error(
-      "Auth state/profile loading failed:",
-      err
-    );
-
-    _profileCache = null;
-    _isAdminCache = false;
-  }
-
-  /*
-   * Resolve only once.
-   */
-  if(!_readyResolved){
-
-    _readyResolved = true;
-
-    _resolveReady(
-      _profileCache
-    );
-  }
-
-  window.dispatchEvent(
-    new CustomEvent("sure:auth", {
-      detail: _profileCache
-    })
-  );
-
-});
-
-
-// ---------------------------------------------------------
-// Auth ready
-// ---------------------------------------------------------
-
-export function whenAuthReady(){
-  return _ready;
 }
 
 
-// ---------------------------------------------------------
-// Current Firebase user
-// ---------------------------------------------------------
+// ============================================================
+// CURRENT FIREBASE USER
+// ============================================================
 
-export function currentUser(){
+export function currentUser() {
+
   return auth.currentUser;
+
 }
 
 
-// ---------------------------------------------------------
-// Current application profile
-// ---------------------------------------------------------
+// ============================================================
+// CURRENT PROFILE
+// ============================================================
 
-export function currentProfile(){
-  return _profileCache;
+export function currentProfile() {
+
+  return currentProfileCache;
+
 }
 
 
-// ---------------------------------------------------------
-// Email + password registration
-// ---------------------------------------------------------
+// ============================================================
+// REGISTER
+// ============================================================
 
 export async function registerUser({
   name,
   phone,
   email,
   password
-}){
+}) {
 
-  /*
-   * Step 1:
-   * Create Firebase Authentication account.
-   */
-  const cred =
+  await authPersistence;
+
+
+  const credential =
     await createUserWithEmailAndPassword(
       auth,
-      email,
+      String(email)
+        .trim()
+        .toLowerCase(),
       password
     );
 
-  /*
-   * Step 2:
-   * Set Firebase Auth display name.
-   */
-  await updateProfile(
-    cred.user,
-    {
-      displayName: name
-    }
-  );
 
-  /*
-   * Step 3:
-   * Create the minimal database profile.
-   *
-   * The database rules allow this because:
-   *
-   * auth.uid === $uid
-   * AND
-   * users/$uid does not exist yet.
-   */
+  const user =
+    credential.user;
+
+
+  // Firebase display name.
+
+  if (name) {
+
+    await updateProfile(
+      user,
+      {
+        displayName:
+          String(name).trim()
+      }
+    );
+
+  }
+
+
+  // Create SURE profile.
+
   const profile =
-    newProfile({
-      uid: cred.user.uid,
-      name,
-      email,
-      phone,
+    createProfile({
+
+      uid: user.uid,
+
+      name: name,
+
+      email: user.email || email,
+
+      phone: phone,
+
       provider: "password"
+
     });
 
+
   await set(
-    ref(db, `${USERS}/${cred.user.uid}`),
+    ref(db, `${USERS}/${user.uid}`),
     profile
   );
 
-  /*
-   * Update local application state immediately.
-   */
-  _profileCache = profile;
 
-  _isAdminCache = false;
+  // Update cache.
+
+  currentProfileCache =
+    profile;
+
+  currentAdminCache =
+    false;
+
 
   return profile;
+
 }
 
 
-// ---------------------------------------------------------
-// Email + password login
-// ---------------------------------------------------------
+// ============================================================
+// EMAIL LOGIN
+// ============================================================
 
 export async function loginUser(
   email,
   password
-){
+) {
 
-  const cred =
+  await authPersistence;
+
+
+  const credential =
     await signInWithEmailAndPassword(
       auth,
-      email,
+      String(email)
+        .trim()
+        .toLowerCase(),
       password
     );
 
-  const profile =
-    await loadUserProfile(
-      cred.user.uid
-    );
 
-  /*
-   * Authentication can succeed while the database profile
-   * is missing, for example after an interrupted registration.
-   */
-  if(!profile){
+  const user =
+    credential.user;
+
+
+  // IMPORTANT:
+  // Firebase Auth is already successful here.
+  // Do not redirect simply because the database profile
+  // does not exist.
+
+  let profile =
+    await ensureUserProfile(user);
+
+
+  if (!profile) {
 
     throw new Error(
-      "Your account exists, but your SURE profile could not be found. Please contact support."
+      "Your account was authenticated but your SURE profile could not be created."
     );
+
   }
 
-  await handleSuspendedProfile(profile);
 
-  _profileCache = profile;
+  if (await checkSuspended(profile)) {
 
-  _isAdminCache =
-    await checkIsAdmin(
-      cred.user.uid
+    throw new Error(
+      "This account has been suspended."
     );
 
+  }
+
+
+  currentProfileCache =
+    profile;
+
+
+  currentAdminCache =
+    await checkIsAdmin(user.uid);
+
+
   return profile;
+
 }
 
 
-// ---------------------------------------------------------
-// Google sign-in
-//
-// Desktop → popup
-// Mobile  → redirect
-// ---------------------------------------------------------
+// ============================================================
+// GOOGLE LOGIN
+// ============================================================
 
-export async function loginWithGoogle(){
+export async function loginWithGoogle() {
+
+  await authPersistence;
+
 
   const provider =
     new GoogleAuthProvider();
+
 
   provider.setCustomParameters({
     prompt: "select_account"
   });
 
 
-  // -------------------------------------------------------
-  // Mobile
-  // -------------------------------------------------------
+  // MOBILE → REDIRECT
 
-  if(isMobile()){
+  if (isMobile()) {
 
-    /*
-     * The browser leaves the current page.
-     *
-     * getRedirectResult() at the top of this module handles
-     * the returned Google credential.
-     */
     await signInWithRedirect(
       auth,
       provider
     );
 
     return null;
+
   }
 
 
-  // -------------------------------------------------------
-  // Desktop
-  // -------------------------------------------------------
+  // DESKTOP → POPUP
 
-  const cred =
+  const credential =
     await signInWithPopup(
       auth,
       provider
     );
 
-  const user = cred.user;
 
-  /*
-   * Create profile if this is the user's first Google login.
-   */
+  const user =
+    credential.user;
+
+
   const profile =
-    await ensureGoogleProfile(user);
+    await ensureUserProfile(user);
 
-  await handleSuspendedProfile(profile);
 
-  _profileCache = profile;
+  if (!profile) {
 
-  _isAdminCache =
+    throw new Error(
+      "Google account authenticated but SURE profile could not be created."
+    );
+
+  }
+
+
+  if (await checkSuspended(profile)) {
+
+    throw new Error(
+      "This account has been suspended."
+    );
+
+  }
+
+
+  currentProfileCache =
+    profile;
+
+
+  currentAdminCache =
     await checkIsAdmin(user.uid);
 
+
   return profile;
+
 }
 
 
-// ---------------------------------------------------------
-// Sign out
-// ---------------------------------------------------------
+// ============================================================
+// LOGOUT
+// ============================================================
 
-export async function logoutUser(){
+export async function logoutUser() {
 
   await signOut(auth);
 
-  _profileCache = null;
-  _isAdminCache = false;
+
+  currentProfileCache = null;
+
+  currentAdminCache = false;
+
 
   location.href =
-    "login.html";
+    appPath("login.html");
+
 }
 
 
-// ---------------------------------------------------------
-// Password reset
-// ---------------------------------------------------------
+// ============================================================
+// PASSWORD RESET
+// ============================================================
 
-export async function resetPassword(email){
+export async function resetPassword(email) {
 
   await sendPasswordResetEmail(
     auth,
-    email
+    String(email)
+      .trim()
+      .toLowerCase()
   );
+
 }
 
 
-// ---------------------------------------------------------
-// Authentication guard
-// ---------------------------------------------------------
+// ============================================================
+// REQUIRE AUTH
+// ============================================================
+//
+// THIS IS THE MAIN FIX.
+//
+// We check Firebase Auth FIRST.
+// A missing database profile does NOT mean the user is logged out.
+// ============================================================
 
 export async function requireAuth(
   redirect = "login.html"
-){
+) {
+
+  // Wait until Firebase finishes checking the session.
 
   const profile =
     await whenAuthReady();
 
-  if(!profile){
+
+  // Firebase is the source of truth.
+
+  const user =
+    auth.currentUser;
+
+
+  console.log(
+    "SURE requireAuth:",
+    {
+      firebaseUser:
+        user?.uid || null,
+
+      profile:
+        profile?.uid || null
+    }
+  );
+
+
+  // No Firebase user = actually logged out.
+
+  if (!user) {
 
     location.href =
-      redirect;
+      redirect.startsWith("/")
+        ? redirect
+        : appPath(redirect);
 
     throw new Error(
-      "Not authenticated"
+      "Not authenticated."
     );
+
   }
 
-  if(profile.status === "suspended"){
 
-    await signOut(auth);
+  // Firebase user exists.
+  // If profile wasn't available during initialization,
+  // try loading/creating it again.
 
-    location.href =
-      "login.html?suspended=1";
+  let finalProfile =
+    profile;
+
+
+  if (!finalProfile) {
+
+    finalProfile =
+      await ensureUserProfile(user);
+
+  }
+
+
+  if (!finalProfile) {
 
     throw new Error(
-      "Suspended"
+      "Your account is signed in, but your SURE profile could not be loaded."
     );
+
   }
 
-  return profile;
+
+  // Check suspension.
+
+  if (
+    await checkSuspended(finalProfile)
+  ) {
+
+    throw new Error(
+      "Account suspended."
+    );
+
+  }
+
+
+  // Update cache.
+
+  currentProfileCache =
+    finalProfile;
+
+
+  return finalProfile;
+
 }
 
 
-// ---------------------------------------------------------
-// Admin guard
-// ---------------------------------------------------------
+// ============================================================
+// REQUIRE ADMIN
+// ============================================================
 
-export async function requireAdmin(){
+export async function requireAdmin() {
 
   const profile =
-    await requireAuth(
-      "../login.html"
-    );
+    await requireAuth();
 
-  const admin =
-    await checkIsAdmin(
-      profile.uid
-    );
 
-  if(!admin){
+  const isAdmin =
+    await checkIsAdmin(profile.uid);
+
+
+  if (!isAdmin) {
 
     location.href =
-      "../dashboard.html";
+      appPath("dashboard.html");
 
     throw new Error(
-      "Not admin"
+      "Administrator access required."
     );
+
   }
 
+
+  currentAdminCache =
+    true;
+
+
   return profile;
+
 }
+
+
+// ============================================================
+// ERROR MESSAGE
+// ============================================================
+
+function getAuthErrorMessage(error) {
+
+  if (!error) {
+    return "Authentication failed.";
+  }
+
+
+  const messages = {
+
+    "auth/invalid-email":
+      "Please enter a valid email address.",
+
+    "auth/user-not-found":
+      "No account was found with this email.",
+
+    "auth/wrong-password":
+      "Incorrect password.",
+
+    "auth/invalid-credential":
+      "The email or password is incorrect.",
+
+    "auth/email-already-in-use":
+      "An account with this email already exists.",
+
+    "auth/weak-password":
+      "Your password is too weak.",
+
+    "auth/popup-closed-by-user":
+      "Google sign-in was cancelled.",
+
+    "auth/popup-blocked":
+      "Your browser blocked the Google sign-in window.",
+
+    "auth/unauthorized-domain":
+      "This website is not authorized in Firebase.",
+
+    "auth/operation-not-allowed":
+      "This sign-in method is not enabled.",
+
+    "auth/network-request-failed":
+      "Network error. Check your internet connection.",
+
+    "auth/too-many-requests":
+      "Too many attempts. Please wait and try again."
+
+  };
+
+
+  return (
+    messages[error.code] ||
+    error.message ||
+    "Authentication failed."
+  );
+
+}
+
+
+// ============================================================
+// DISPLAY ERROR
+// ============================================================
+
+function showError(message) {
+
+  const box =
+    document.getElementById("formError") ||
+    document.getElementById("authError");
+
+
+  if (!box) {
+    return;
+  }
+
+
+  box.textContent =
+    message;
+
+
+  box.style.display =
+    "flex";
+
+}
+
+
+// ============================================================
+// DEBUG
+// ============================================================
+
+window.SURE_AUTH_DEBUG = {
+
+  user: function() {
+    return auth.currentUser;
+  },
+
+  profile: function() {
+    return currentProfileCache;
+  },
+
+  isAdmin: function() {
+    return currentAdminCache;
+  },
+
+  ready: function() {
+    return authReady;
+  }
+
+};
