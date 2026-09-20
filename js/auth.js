@@ -1,5 +1,6 @@
 // ============================================
 // SURE — auth + user profile helpers
+// Track the Pool. Follow Every Bet.
 // ============================================
 import {
   auth, db, onAuthStateChanged, createUserWithEmailAndPassword,
@@ -43,9 +44,14 @@ export function currentIsAdmin(){
 
 // ---------------------------------------------------------
 // Minimal profile created at signup.
-// Financial fields (wallets, riskState, currentCycleId)
-// are created later by the admin deposit-approval workflow,
-// which the security rules permit.
+//
+// The security rules restrict these four fields to admins:
+//   wallets, riskState, currentCycleId, verificationStatus
+//
+// So this helper deliberately writes ONLY the fields a
+// freshly-registered user is permitted to write. The four
+// restricted fields get created later when an admin approves
+// a deposit (via database.js → approveDeposit()).
 // ---------------------------------------------------------
 function newProfile({ uid, name, email, phone, provider }){
   return {
@@ -145,11 +151,14 @@ export async function registerUser({ name, phone, email, password }){
 
   const profile = newProfile({
     uid: cred.user.uid,
-    name, email, phone,
+    name,
+    email,
+    phone,
     provider: "password"
   });
 
   await set(ref(db, `${USERS}/${cred.user.uid}`), profile);
+
   _profileCache = profile;
   _isAdminCache = false;
   return profile;
@@ -173,10 +182,14 @@ export async function loginWithGoogle(){
   provider.setCustomParameters({ prompt: "select_account" });
 
   if(isMobile()){
+    // Redirect flow — the getRedirectResult handler at the top
+    // of this module finishes the sign-in when the user returns.
+    // The page navigates away here; this function returns null.
     await signInWithRedirect(auth, provider);
     return null;
   }
 
+  // Desktop popup flow
   const cred = await signInWithPopup(auth, provider);
   const user = cred.user;
 
@@ -219,7 +232,10 @@ export async function resetPassword(email){
 // ---------------------------------------------------------
 export async function requireAuth(redirect="login.html"){
   const profile = await whenAuthReady();
-  if(!profile){ location.href = redirect; throw new Error("Not authenticated"); }
+  if(!profile){
+    location.href = redirect;
+    throw new Error("Not authenticated");
+  }
   if(profile.status === "suspended"){
     await signOut(auth);
     location.href = "login.html?suspended=1";
