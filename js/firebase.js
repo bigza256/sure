@@ -1,7 +1,9 @@
 // ============================================
 // SURE — Firebase bootstrap (single source)
+// Track the Pool. Follow Every Bet.
 // ============================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+
 import {
   getAuth,
   onAuthStateChanged,
@@ -15,6 +17,7 @@ import {
   sendPasswordResetEmail,
   updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 import {
   getDatabase,
   ref,
@@ -28,10 +31,13 @@ import {
   equalTo,
   onValue,
   serverTimestamp,
-  runTransaction,
-  enableIndexedDbPersistence
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+// ============================================
+// Firebase configuration
+// Project: sure-ug
+// ============================================
 export const firebaseConfig = {
   apiKey: "AIzaSyBeDrCRP_aTDcAbmc-so90SHFBVnujcwbE",
   authDomain: "sure-ug.firebaseapp.com",
@@ -43,24 +49,45 @@ export const firebaseConfig = {
   measurementId: "G-QC5E861BQH"
 };
 
+// ============================================
+// Initialise Firebase
+// ============================================
 export const app  = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db   = getDatabase(app);
 
-// Offline cache — repeat visits load instantly
-enableIndexedDbPersistence(db).catch(() => {
-  // Ignored — fails harmlessly if another tab already holds the lock
-});
-
-// Re-export Firebase helpers so app modules import from one place
+// ============================================
+// Re-export Firebase helpers so app modules
+// import from one place instead of the CDN
+// ============================================
 export {
-  onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider,
-  signOut, sendPasswordResetEmail, updateProfile,
-  ref, get, set, update, push, remove, query, orderByChild, equalTo, onValue,
-  serverTimestamp, runTransaction
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
+  signOut,
+  sendPasswordResetEmail,
+  updateProfile,
+  ref,
+  get,
+  set,
+  update,
+  push,
+  remove,
+  query,
+  orderByChild,
+  equalTo,
+  onValue,
+  serverTimestamp,
+  runTransaction
 };
 
+// ============================================
+// App-wide constants
+// ============================================
 export const APP = {
   name: "SURE",
   tagline: "Track the Pool. Follow Every Bet.",
