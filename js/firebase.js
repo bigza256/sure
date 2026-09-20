@@ -10,17 +10,13 @@ import {
   getAuth,
   setPersistence,
   browserLocalPersistence,
-
   onAuthStateChanged,
-
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-
   getRedirectResult,
   GoogleAuthProvider,
-
   signOut,
   sendPasswordResetEmail,
   updateProfile
@@ -28,20 +24,16 @@ import {
 
 import {
   getDatabase,
-
   ref,
   get,
   set,
   update,
   push,
   remove,
-
   query,
   orderByChild,
   equalTo,
-
   onValue,
-
   serverTimestamp,
   runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -67,61 +59,35 @@ export const firebaseConfig = {
 // INITIALIZE FIREBASE
 // ============================================================
 
-export const app =
-  initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
+export const auth = getAuth(app);
 
-// ============================================================
-// FIREBASE AUTH
-// ============================================================
-
-export const auth =
-  getAuth(app);
-
-
-// ============================================================
-// REALTIME DATABASE
-// ============================================================
-
-export const db =
-  getDatabase(app);
+export const db = getDatabase(app);
 
 
 // ============================================================
 // AUTH PERSISTENCE
 // ============================================================
-//
-// Keeps the user signed in after:
-// - page refresh
-// - navigating between pages
-// - closing/reopening the browser
-//
-// Firebase supports browserLocalPersistence for this purpose.
-// ============================================================
 
-export const authPersistence =
-  setPersistence(
-    auth,
-    browserLocalPersistence
-  );
+export const authPersistence = setPersistence(
+  auth,
+  browserLocalPersistence
+);
 
 
 // ============================================================
-// AUTH EXPORTS
+// EXPORT AUTH FUNCTIONS
 // ============================================================
 
 export {
   onAuthStateChanged,
-
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-
   signInWithPopup,
   signInWithRedirect,
-
   getRedirectResult,
   GoogleAuthProvider,
-
   signOut,
   sendPasswordResetEmail,
   updateProfile
@@ -129,7 +95,7 @@ export {
 
 
 // ============================================================
-// DATABASE EXPORTS
+// EXPORT DATABASE FUNCTIONS
 // ============================================================
 
 export {
@@ -139,13 +105,10 @@ export {
   update,
   push,
   remove,
-
   query,
   orderByChild,
   equalTo,
-
   onValue,
-
   serverTimestamp,
   runTransaction
 };
@@ -156,17 +119,12 @@ export {
 // ============================================================
 
 export const APP = {
-
   name: "SURE",
-
   tagline: "Track the Pool. Follow Every Bet.",
-
   currency: "UGX",
 
   minDeposit: 50000,
-
   maxDeposit: 800000,
 
   cycleDays: 30
-
 };
