@@ -6,36 +6,50 @@ import {
   initializeApp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 
+
 import {
   getAuth,
   setPersistence,
   browserLocalPersistence,
+
   onAuthStateChanged,
+  authStateReady,
+
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+
   signInWithPopup,
   signInWithRedirect,
+
   getRedirectResult,
   GoogleAuthProvider,
+
   signOut,
   sendPasswordResetEmail,
   updateProfile
+
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 
 import {
   getDatabase,
+
   ref,
   get,
   set,
   update,
   push,
   remove,
+
   query,
   orderByChild,
   equalTo,
+
   onValue,
+
   serverTimestamp,
   runTransaction
+
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 
@@ -44,14 +58,30 @@ import {
 // ============================================================
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyBeDrCRP_aTDcAbmc-so90SHFBVnujcwbE",
-  authDomain: "sure-ug.firebaseapp.com",
-  databaseURL: "https://sure-ug-default-rtdb.firebaseio.com",
-  projectId: "sure-ug",
-  storageBucket: "sure-ug.firebasestorage.app",
-  messagingSenderId: "622151353971",
-  appId: "1:622151353971:web:966031ef24ea135ee7cc06",
-  measurementId: "G-QC5E861BQH"
+
+  apiKey:
+    "AIzaSyBeDrCRP_aTDcAbmc-so90SHFBVnujcwbE",
+
+  authDomain:
+    "sure-ug.firebaseapp.com",
+
+  databaseURL:
+    "https://sure-ug-default-rtdb.firebaseio.com",
+
+  projectId:
+    "sure-ug",
+
+  storageBucket:
+    "sure-ug.firebasestorage.app",
+
+  messagingSenderId:
+    "622151353971",
+
+  appId:
+    "1:622151353971:web:966031ef24ea135ee7cc06",
+
+  measurementId:
+    "G-QC5E861BQH"
 };
 
 
@@ -59,35 +89,47 @@ export const firebaseConfig = {
 // INITIALIZE FIREBASE
 // ============================================================
 
-export const app = initializeApp(firebaseConfig);
+export const app =
+  initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
 
-export const db = getDatabase(app);
+export const auth =
+  getAuth(app);
+
+
+export const db =
+  getDatabase(app);
 
 
 // ============================================================
 // AUTH PERSISTENCE
 // ============================================================
 
-export const authPersistence = setPersistence(
-  auth,
-  browserLocalPersistence
-);
+export const authPersistence =
+  setPersistence(
+    auth,
+    browserLocalPersistence
+  );
 
 
 // ============================================================
-// EXPORT AUTH FUNCTIONS
+// AUTH EXPORTS
 // ============================================================
 
 export {
+
   onAuthStateChanged,
+  authStateReady,
+
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+
   signInWithPopup,
   signInWithRedirect,
+
   getRedirectResult,
   GoogleAuthProvider,
+
   signOut,
   sendPasswordResetEmail,
   updateProfile
@@ -95,22 +137,27 @@ export {
 
 
 // ============================================================
-// EXPORT DATABASE FUNCTIONS
+// DATABASE EXPORTS
 // ============================================================
 
 export {
+
   ref,
   get,
   set,
   update,
   push,
   remove,
+
   query,
   orderByChild,
   equalTo,
+
   onValue,
+
   serverTimestamp,
   runTransaction
+
 };
 
 
@@ -119,12 +166,23 @@ export {
 // ============================================================
 
 export const APP = {
-  name: "SURE",
-  tagline: "Track the Pool. Follow Every Bet.",
-  currency: "UGX",
 
-  minDeposit: 50000,
-  maxDeposit: 800000,
+  name:
+    "SURE",
 
-  cycleDays: 30
+  tagline:
+    "Track the Pool. Follow Every Bet.",
+
+  currency:
+    "UGX",
+
+  minDeposit:
+    50000,
+
+  maxDeposit:
+    800000,
+
+  cycleDays:
+    30
+
 };
