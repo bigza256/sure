@@ -35,7 +35,6 @@ import {
 export const firebaseConfig = {
   apiKey: "AIzaSyBeDrCRP_aTDcAbmc-so90SHFBVnujcwbE",
   authDomain: "sure-ug.firebaseapp.com",
-  // ▼ Replace this line with the exact URL from Firebase Console → Realtime Database ▼
   databaseURL: "https://sure-ug-default-rtdb.firebaseio.com",
   projectId: "sure-ug",
   storageBucket: "sure-ug.firebasestorage.app",
