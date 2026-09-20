@@ -28,29 +28,30 @@ import {
   equalTo,
   onValue,
   serverTimestamp,
-  runTransaction
+  runTransaction,
+  enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-import {
-  getStorage,
-  ref as sRef,
-  uploadBytes,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyDEsbK7nc1KtL02OTWQcMXVvBOSULRYLMA",
-  authDomain: "rysen-61d72.firebaseapp.com",
-  databaseURL: "https://rysen-61d72-default-rtdb.firebaseio.com",
-  projectId: "rysen-61d72",
-  storageBucket: "rysen-61d72.firebasestorage.app",
-  messagingSenderId: "84370846684",
-  appId: "1:84370846684:web:c11fa3cc2d064e146d9519"
+  apiKey: "AIzaSyBeDrCRP_aTDcAbmc-so90SHFBVnujcwbE",
+  authDomain: "sure-ug.firebaseapp.com",
+  // ▼ Replace this line with the exact URL from Firebase Console → Realtime Database ▼
+  databaseURL: "https://sure-ug-default-rtdb.firebaseio.com",
+  projectId: "sure-ug",
+  storageBucket: "sure-ug.firebasestorage.app",
+  messagingSenderId: "622151353971",
+  appId: "1:622151353971:web:966031ef24ea135ee7cc06",
+  measurementId: "G-QC5E861BQH"
 };
 
 export const app  = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db   = getDatabase(app);
-export const storage = getStorage(app);
+
+// Offline cache — repeat visits load instantly
+enableIndexedDbPersistence(db).catch(() => {
+  // Ignored — fails harmlessly if another tab already holds the lock
+});
 
 // Re-export Firebase helpers so app modules import from one place
 export {
@@ -58,11 +59,9 @@ export {
   signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider,
   signOut, sendPasswordResetEmail, updateProfile,
   ref, get, set, update, push, remove, query, orderByChild, equalTo, onValue,
-  serverTimestamp, runTransaction,
-  sRef, uploadBytes, getDownloadURL
+  serverTimestamp, runTransaction
 };
 
-// ------------------ App-wide constants ------------------
 export const APP = {
   name: "SURE",
   tagline: "Track the Pool. Follow Every Bet.",
