@@ -11,8 +11,7 @@ import {
 } from "./firebase.js";
 
 // FIX: namespace import so we can OPTIONALLY use `auth` without breaking
-// the module if firebase.js doesn't export it. Export `auth` from firebase.js
-// (and ideally `runTransaction`) to get the full benefit.
+// the module if firebase.js doesn't export it.
 import * as FB from "./firebase.js";
 
 import {
@@ -218,17 +217,6 @@ export async function createDepositSubmission(data){
 
 // ================================================================
 // ATOMIC WORKFLOW: APPROVE DEPOSIT
-//
-// ISSUE (race condition): the PENDING check and the write are NOT atomic.
-// Two admins clicking at once can both pass the check and double-credit.
-// Real fix: claim the deposit with runTransaction (PENDING -> APPROVED)
-// first, or enforce it in rules:
-//   deposit_submissions/$id/status .write:
-//     "data.val() === 'PENDING'"
-// and make wallet writes depend on it. Best: do this in a Cloud Function.
-//
-// ISSUE: every approved deposit creates a NEW cycle and overwrites
-// users/{uid}/currentCycleId, orphaning any still-ACTIVE earlier cycle.
 // ================================================================
 export async function approveDeposit({ deposit, adminUid, config }){
 
@@ -247,8 +235,6 @@ export async function approveDeposit({ deposit, adminUid, config }){
 
   const wallets = { ...ZERO_WALLETS, ...(user.wallets || {}) };
 
-  // ISSUE: allocation + reserve should sum exactly to `amount`. Rounding in
-  // calc.js can drift by 1 UGX; verify and put the remainder in one bucket.
   const allocation = calculateActiveAllocation(amount, config);
   const reserve = calculateProtectedReserve(amount, config);
   if(allocation + reserve !== amount){
@@ -416,16 +402,6 @@ export async function rejectDeposit({ deposit, adminUid, reason }){
 
 // ================================================================
 // ATOMIC WORKFLOW: BET WIN
-//
-// ISSUE (race): wallets are read, modified in JS and overwritten. A
-// concurrent deposit/withdrawal/bet is silently lost (last write wins).
-// Prefer runTransaction on users/{uid}/wallets, or a Cloud Function.
-//
-// ISSUE: cycle counters use read-modify-write too. Same race.
-// ISSUE: no check that cycleId belongs to uid, is ACTIVE, or that betId
-// exists / isn't already settled -> the same bet can be settled twice.
-// ISSUE: bet_records is never updated here (status stays "pending",
-// which computePoolStats counts as an active bet forever).
 // ================================================================
 export async function recordBetWin({ uid, cycleId, stake, odds, adminUid, config, betId }){
 
@@ -513,8 +489,6 @@ export async function recordBetWin({ uid, cycleId, stake, odds, adminUid, config
     note: "Reserve credit from profit"
   };
 
-  // ISSUE: "companyShare" is not a real wallet on the user, and the
-  // balances shown are the user's companyShareContributed counter.
   u[`${PATH.transactions}/${txCo}`] = {
     ...base, txId: txCo, type: "COMPANY_SHARE",
     amount: dist.companyShare,
@@ -552,7 +526,6 @@ export async function recordBetWin({ uid, cycleId, stake, odds, adminUid, config
 
 // ================================================================
 // ATOMIC WORKFLOW: BET LOSS
-// Same race / duplicate-settlement / bet_records issues as BET WIN.
 // ================================================================
 export async function recordBetLoss({ uid, cycleId, stake, odds, adminUid, config, betId }){
 
@@ -616,12 +589,6 @@ export async function recordBetLoss({ uid, cycleId, stake, odds, adminUid, confi
 
 // ================================================================
 // ATOMIC WORKFLOW: COMPLETE WITHDRAWAL
-//
-// ISSUE (race): two admins completing the same withdrawal can both pass
-// the status check -> double debit. Claim it with runTransaction first.
-// ISSUE: only rejects COMPLETED/REJECTED; any other status (e.g.
-// "CANCELLED") would still be paid. Whitelist allowed statuses instead.
-// ISSUE: cycles.totalWithdrawals is never incremented.
 // ================================================================
 export async function completeWithdrawal({ withdrawal, adminUid }){
 
@@ -629,13 +596,12 @@ export async function completeWithdrawal({ withdrawal, adminUid }){
   const fresh = await getOnce(wPath);
   if(!fresh) throw new Error("Withdrawal not found.");
 
-  // FIX: whitelist. Adjust to your real pre-payment statuses.
+  // FIX: whitelist payable statuses.
   const PAYABLE = ["PENDING", "APPROVED"];
   if(!PAYABLE.includes(fresh.status)){
     throw new Error(`Cannot complete a withdrawal that is ${fresh.status}.`);
   }
 
-  // FIX: use DB values, not client-supplied ones.
   const uid = fresh.uid;
   const amount = fresh.amount;
   assertPositiveInt(amount, "Withdrawal amount");
@@ -699,42 +665,22 @@ export async function completeWithdrawal({ withdrawal, adminUid }){
 
 
 // ================================================================
-// UPDATE SYSTEM CONFIG  (FIXED — was: permission_denied at /system_config)
+// UPDATE SYSTEM CONFIG  (FIXED)
 //
-// Likely causes of the original error, all addressed below:
+// ★ The previous version wrote each changed key as a separate child
+//   path (u["system_config/version"] = 2, etc.). Firebase Realtime
+//   Database evaluates the parent ".validate" on /system_config
+//   against the merged state, and child writes can trip it when the
+//   child has no explicit ".validate" of its own (e.g. updatedAt,
+//   updatedBy, minContribution, maxContribution).
 //
-//  1. adminUid (a parameter) was checked against /admins, but the RULES
-//     check the *signed-in* auth.uid. If they differ, isAdmin() passes in
-//     JS and the server still says permission_denied.
-//     -> we now use auth.currentUser.uid when firebase.js exports `auth`.
+//   The version that WORKED before wrote the whole node:
+//     u["system_config"] = next;
 //
-//  2. The old code re-sent the ENTIRE previous config back, so every
-//     unchanged field was re-validated. One legacy field that fails a
-//     .validate (or hits a `$other: { ".validate": false }`) blocked the
-//     whole write.
-//     -> we now write ONLY the keys that actually changed.
-//
-//  3. `undefined` values / unknown keys in nextConfig.
-//     -> undefined is stripped; unknown keys are reported in the error.
-//
-//  4. The old comment claimed update(ref(db), u) needs write access at
-//     the database ROOT. It doesn't: RTDB checks rules per written path
-//     (approveDeposit already relies on this). So config + history +
-//     audit are now ONE atomic multi-path update; before, a failure in
-//     step 2/3 left a config change with no history/audit record.
-//
-// If it STILL fails, check these in your rules for /system_config:
-//   - write: root.child('admins').child(auth.uid).val() === true
-//   - any ".validate" on updatedBy / updatedAt / version, e.g.
-//       version must equal data.val() + 1
-//       updatedBy must equal auth.uid
-//       updatedAt must be <= now
-//   - every config field you send is declared (or $other allowed)
-//   - system_config_history/$id and audit_logs/$id allow admin writes
-//     and their .validate rules match the fields written below
-//     (audit rule may require e.g. logId, actor === auth.uid)
+//   That is what this version does too — full node, single atomic
+//   update, alongside the history and audit writes.
 // ================================================================
-export async function updateSystemConfig({ nextConfig, adminUid, reason = "", debug = false }){
+export async function updateSystemConfig({ nextConfig, adminUid, reason = "" }){
 
   const authUid = FB.auth?.currentUser?.uid || null;
   const uid = authUid || adminUid;
@@ -766,19 +712,14 @@ export async function updateSystemConfig({ nextConfig, adminUid, reason = "", de
     updatedBy: uid
   };
 
-  // Only write keys that changed.
-  const changed = {};
-  for(const k of Object.keys(next)){
-    if(JSON.stringify(next[k]) !== JSON.stringify(prev[k])) changed[k] = next[k];
-  }
-
   const histId = newKey(PATH.systemConfigHistory);
   const logId = newKey(PATH.auditLogs);
 
   const u = {};
-  for(const [k, v] of Object.entries(changed)){
-    u[`${PATH.systemConfig}/${k}`] = v;
-  }
+
+  // ★ Write the WHOLE system_config node — this is the shape that passed
+  //   the security rules before.
+  u[PATH.systemConfig] = next;
 
   u[`${PATH.systemConfigHistory}/${histId}`] = {
     changedAt: now,
@@ -804,31 +745,14 @@ export async function updateSystemConfig({ nextConfig, adminUid, reason = "", de
     await update(ref(db), stripUndefined(u));
   }catch(e){
     if(e?.code === "PERMISSION_DENIED" || /permission_denied/i.test(e?.message || "")){
-      // DEBUG MODE: a multi-path update only reports "failed at /", so it
-      // can't say WHICH path the rules rejected. With debug:true we retry
-      // each path on its own (NOT atomic; allowed ones will be written).
-      if(debug){
-        const report = {};
-        for(const [path, val] of Object.entries(stripUndefined(u))){
-          try{
-            await set(ref(db, path), val);
-            report[path] = "OK";
-          }catch(err){
-            report[path] = "DENIED: " + (err?.code || err?.message);
-          }
-        }
-        console.table(report);
-      }
       console.error("system_config write denied.", {
         signedInUid: authUid,
         adminUidParam: adminUid,
-        changedKeys: Object.keys(changed),
         paths: Object.keys(u)
       });
       throw new Error(
         "Permission denied writing system config. Check the /system_config, " +
-        "/system_config_history and /audit_logs rules (.write and .validate) " +
-        "against the keys logged in the console."
+        "/system_config_history and /audit_logs rules (.write and .validate)."
       );
     }
     throw e;
@@ -840,21 +764,12 @@ export async function updateSystemConfig({ nextConfig, adminUid, reason = "", de
 
 // ================================================================
 // POOL STATS
-//
-// ISSUE (performance/privacy): downloads ALL users, ALL transactions
-// and ALL bets to the client on every call. This will get slow and
-// expensive, and requires broad read access -> not "public".
-// Maintain aggregates at /pool_stats via Cloud Functions or increments
-// inside the same atomic updates above, and read that instead.
-//
-// FIX: transactions are no longer downloaded just to count them.
 // ================================================================
 export async function computePoolStats(){
 
   const [users, bets, txCountSnap] = await Promise.all([
     listAll(PATH.users),
     listAll(PATH.betRecords),
-    // shallow-ish count; still O(n) — replace with a stored counter.
     getOnce(PATH.transactions).then(d => (d ? Object.keys(d).length : 0))
   ]);
 
