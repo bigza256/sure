@@ -567,6 +567,9 @@ onAuthStateChanged(
 
 // ============================================================
 // GOOGLE REDIRECT RESULT
+//
+// Kept for compatibility with any existing redirect session.
+// Normal Google login below now uses POPUP.
 // ============================================================
 
 (async () => {
@@ -804,6 +807,13 @@ export async function loginUser(
 
 // ============================================================
 // GOOGLE LOGIN
+//
+// IMPORTANT:
+// We intentionally use POPUP here on ALL devices.
+//
+// This avoids forcing mobile Chrome into the
+// signInWithRedirect() flow.
+//
 // ============================================================
 
 export async function loginWithGoogle() {
@@ -817,56 +827,105 @@ export async function loginWithGoogle() {
     prompt: "select_account"
   });
 
-  if (isMobile()) {
+  console.log(
+    "SURE: Starting Google popup login..."
+  );
 
-    await signInWithRedirect(
-      auth,
-      provider
-    );
+  console.log(
+    "SURE: Browser:",
+    navigator.userAgent
+  );
 
-    return null;
+  console.log(
+    "SURE: Mobile detected:",
+    isMobile()
+  );
 
-  }
+  try {
 
-  const credential =
-    await signInWithPopup(
-      auth,
-      provider
-    );
+    const credential =
+      await signInWithPopup(
+        auth,
+        provider
+      );
 
-  const user =
-    credential.user;
+    const user =
+      credential.user;
 
-  const profile =
-    await ensureUserProfile(user);
-
-  if (!profile) {
-
-    throw new Error(
-      "Google authentication succeeded, but the SURE profile could not be created."
-    );
-
-  }
-
-  if (
-    await handleSuspendedAccount(profile)
-  ) {
-
-    throw new Error(
-      "This account has been suspended."
-    );
-
-  }
-
-  profileCache =
-    profile;
-
-  adminCache =
-    await checkIsAdmin(
+    console.log(
+      "SURE: Google popup authenticated:",
       user.uid
     );
 
-  return profile;
+    console.log(
+      "SURE: Google account:",
+      user.email
+    );
+
+    const profile =
+      await ensureUserProfile(user);
+
+    if (!profile) {
+
+      throw new Error(
+        "Google authentication succeeded, but the SURE profile could not be created."
+      );
+
+    }
+
+    console.log(
+      "SURE: Google profile ready:",
+      profile.uid
+    );
+
+    if (
+      await handleSuspendedAccount(profile)
+    ) {
+
+      throw new Error(
+        "This account has been suspended."
+      );
+
+    }
+
+    profileCache =
+      profile;
+
+    adminCache =
+      await checkIsAdmin(
+        user.uid
+      );
+
+    console.log(
+      "SURE: Google login completed successfully."
+    );
+
+    return profile;
+
+  } catch (error) {
+
+    console.error(
+      "SURE: Google popup login failed:",
+      error
+    );
+
+    console.error(
+      "SURE: Google error code:",
+      error?.code || "NO_CODE"
+    );
+
+    console.error(
+      "SURE: Google error message:",
+      error?.message || "NO_MESSAGE"
+    );
+
+    showAuthError(
+      getAuthErrorMessage(error)
+    );
+
+    throw error;
+
+  }
 
 }
 
@@ -1104,6 +1163,13 @@ async function handleEntryPage() {
       await checkIsAdmin(
         user.uid
       );
+
+    console.log(
+      "SURE: Entry redirect:",
+      adminCache
+        ? "ADMIN"
+        : "USER"
+    );
 
     location.href =
       adminCache
