@@ -734,7 +734,7 @@ export async function completeWithdrawal({ withdrawal, adminUid }){
 //     and their .validate rules match the fields written below
 //     (audit rule may require e.g. logId, actor === auth.uid)
 // ================================================================
-export async function updateSystemConfig({ nextConfig, adminUid, reason = "" }){
+export async function updateSystemConfig({ nextConfig, adminUid, reason = "", debug = false }){
 
   const authUid = FB.auth?.currentUser?.uid || null;
   const uid = authUid || adminUid;
@@ -804,6 +804,21 @@ export async function updateSystemConfig({ nextConfig, adminUid, reason = "" }){
     await update(ref(db), stripUndefined(u));
   }catch(e){
     if(e?.code === "PERMISSION_DENIED" || /permission_denied/i.test(e?.message || "")){
+      // DEBUG MODE: a multi-path update only reports "failed at /", so it
+      // can't say WHICH path the rules rejected. With debug:true we retry
+      // each path on its own (NOT atomic; allowed ones will be written).
+      if(debug){
+        const report = {};
+        for(const [path, val] of Object.entries(stripUndefined(u))){
+          try{
+            await set(ref(db, path), val);
+            report[path] = "OK";
+          }catch(err){
+            report[path] = "DENIED: " + (err?.code || err?.message);
+          }
+        }
+        console.table(report);
+      }
       console.error("system_config write denied.", {
         signedInUid: authUid,
         adminUidParam: adminUid,
