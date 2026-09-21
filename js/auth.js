@@ -12,7 +12,6 @@ import {
   signInWithEmailAndPassword,
 
   signInWithPopup,
-  signInWithRedirect,
 
   getRedirectResult,
   GoogleAuthProvider,
@@ -60,6 +59,32 @@ let resolveAuthReady;
 const authReadyPromise = new Promise((resolve) => {
   resolveAuthReady = resolve;
 });
+
+
+// ============================================================
+// PROFILE OPERATION LOCKS
+//
+// Prevents multiple parts of the application from trying
+// to create the same user profile simultaneously.
+//
+// Example:
+//
+// Google login
+//       ↓
+// Firebase auth state
+//       ↓
+// loginWithGoogle()
+//       ↓
+// onAuthStateChanged()
+//       ↓
+// requireAuth()
+//
+// All of them can request the same profile.
+//
+// They must share ONE operation.
+// ============================================================
+
+const profileCreationPromises = new Map();
 
 
 // ============================================================
@@ -277,6 +302,16 @@ export async function loadUserProfile(uid) {
 
 // ============================================================
 // ENSURE PROFILE EXISTS
+//
+// IMPORTANT:
+//
+// This function is now concurrency-safe.
+//
+// If multiple parts of the application call this function
+// for the same UID at the same time, only ONE profile
+// creation request is performed.
+//
+// Everyone else waits for the same Promise.
 // ============================================================
 
 async function ensureUserProfile(user) {
@@ -285,59 +320,192 @@ async function ensureUserProfile(user) {
     return null;
   }
 
+  const uid =
+    user.uid;
+
+
+  // ----------------------------------------------------------
+  // Check whether a profile already exists.
+  // ----------------------------------------------------------
+
   const existing =
-    await loadUserProfile(user.uid);
+    await loadUserProfile(uid);
 
   if (existing) {
+
+    console.log(
+      "SURE: Existing profile found:",
+      uid
+    );
+
     return existing;
-  }
-
-  let provider = "password";
-
-  if (Array.isArray(user.providerData)) {
-
-    const googleProvider =
-      user.providerData.some(
-        item =>
-          item?.providerId === "google.com"
-      );
-
-    if (googleProvider) {
-      provider = "google";
-    }
 
   }
 
-  const profile =
-    createProfile({
 
-      uid:
-        user.uid,
+  // ----------------------------------------------------------
+  // If another part of the application is already creating
+  // this exact profile, wait for that operation.
+  // ----------------------------------------------------------
 
-      name:
-        user.displayName ||
-        "User",
+  if (
+    profileCreationPromises.has(uid)
+  ) {
 
-      email:
-        user.email ||
-        "",
+    console.log(
+      "SURE: Profile creation already in progress:",
+      uid
+    );
 
-      phone:
-        "",
+    return await profileCreationPromises.get(uid);
 
-      provider
+  }
 
-    });
 
-  await set(
-    ref(
-      db,
-      `${USERS_PATH}/${user.uid}`
-    ),
-    profile
+  // ----------------------------------------------------------
+  // Create ONE shared creation operation.
+  // ----------------------------------------------------------
+
+  const creationPromise =
+    (async () => {
+
+      try {
+
+        // Re-check inside the lock.
+        //
+        // This protects against another operation having
+        // completed between the first check and this point.
+
+        const latest =
+          await loadUserProfile(uid);
+
+        if (latest) {
+
+          console.log(
+            "SURE: Profile appeared during creation:",
+            uid
+          );
+
+          return latest;
+
+        }
+
+
+        // ----------------------------------------------------
+        // Determine provider.
+        // ----------------------------------------------------
+
+        let provider =
+          "password";
+
+        if (
+          Array.isArray(
+            user.providerData
+          )
+        ) {
+
+          const googleProvider =
+            user.providerData.some(
+              item =>
+                item?.providerId === "google.com"
+            );
+
+          if (googleProvider) {
+
+            provider =
+              "google";
+
+          }
+
+        }
+
+
+        // ----------------------------------------------------
+        // Build profile.
+        // ----------------------------------------------------
+
+        const profile =
+          createProfile({
+
+            uid,
+
+            name:
+              user.displayName ||
+              "User",
+
+            email:
+              user.email ||
+              "",
+
+            phone:
+              "",
+
+            provider
+
+          });
+
+
+        console.log(
+          "SURE: Creating profile:",
+          profile
+        );
+
+
+        // ----------------------------------------------------
+        // Write profile.
+        // ----------------------------------------------------
+
+        await set(
+          ref(
+            db,
+            `${USERS_PATH}/${uid}`
+          ),
+          profile
+        );
+
+
+        console.log(
+          "SURE: Profile created successfully:",
+          uid
+        );
+
+
+        return profile;
+
+      } catch (error) {
+
+        console.error(
+          "SURE: Profile creation failed:",
+          error
+        );
+
+        throw error;
+
+      }
+
+    })();
+
+
+  // ----------------------------------------------------------
+  // Store the shared operation.
+  // ----------------------------------------------------------
+
+  profileCreationPromises.set(
+    uid,
+    creationPromise
   );
 
-  return profile;
+
+  try {
+
+    return await creationPromise;
+
+  } finally {
+
+    // Remove the lock after completion.
+    profileCreationPromises.delete(uid);
+
+  }
 
 }
 
@@ -452,12 +620,9 @@ async function processAuthenticatedUser(user) {
 // ============================================================
 // AUTH STATE INITIALIZATION
 //
-// IMPORTANT:
+// Firebase Auth determines whether the user is logged in.
 //
-// Firebase Auth itself determines whether the user
-// is logged in.
-//
-// RTDB profile loading happens AFTER this.
+// Profile creation/loading happens AFTER authentication.
 //
 // ============================================================
 
@@ -470,12 +635,13 @@ onAuthStateChanged(
       user?.uid || "SIGNED OUT"
     );
 
-    /*
-     * Resolve the authentication promise
-     * immediately on the FIRST Firebase auth event.
-     *
-     * We do NOT wait for the database.
-     */
+
+    // --------------------------------------------------------
+    // Resolve authentication promise immediately on the
+    // FIRST Firebase auth event.
+    //
+    // We do NOT wait for RTDB profile loading here.
+    // --------------------------------------------------------
 
     if (!authInitialized) {
 
@@ -488,9 +654,9 @@ onAuthStateChanged(
     }
 
 
-    /*
-     * No authenticated user.
-     */
+    // --------------------------------------------------------
+    // No authenticated user.
+    // --------------------------------------------------------
 
     if (!user) {
 
@@ -515,11 +681,11 @@ onAuthStateChanged(
     }
 
 
-    /*
-     * User is authenticated.
-     *
-     * Profile loading is separate.
-     */
+    // --------------------------------------------------------
+    // Authenticated user.
+    //
+    // Profile creation/loading is centralized here.
+    // --------------------------------------------------------
 
     try {
 
@@ -534,10 +700,13 @@ onAuthStateChanged(
           {
             detail: {
               user,
+
               profile:
                 profile || null,
+
               isAdmin:
                 adminCache
+
             }
           }
         )
@@ -568,8 +737,9 @@ onAuthStateChanged(
 // ============================================================
 // GOOGLE REDIRECT RESULT
 //
-// Kept for compatibility with any existing redirect session.
-// Normal Google login below now uses POPUP.
+// Kept for compatibility with an existing redirect session.
+//
+// Normal Google login below uses POPUP.
 // ============================================================
 
 (async () => {
@@ -665,6 +835,11 @@ export async function registerUser({
   const user =
     credential.user;
 
+
+  // ----------------------------------------------------------
+  // Update Firebase Auth profile first.
+  // ----------------------------------------------------------
+
   if (name) {
 
     await updateProfile(
@@ -677,32 +852,25 @@ export async function registerUser({
 
   }
 
+
+  // ----------------------------------------------------------
+  // Use the same concurrency-safe profile function.
+  //
+  // We no longer perform a separate raw set() here.
+  // ----------------------------------------------------------
+
   const profile =
-    createProfile({
+    await ensureUserProfile(user);
 
-      uid:
-        user.uid,
 
-      name,
+  if (!profile) {
 
-      email:
-        user.email ||
-        email,
+    throw new Error(
+      "Account was created, but the SURE profile could not be created."
+    );
 
-      phone,
+  }
 
-      provider:
-        "password"
-
-    });
-
-  await set(
-    ref(
-      db,
-      `${USERS_PATH}/${user.uid}`
-    ),
-    profile
-  );
 
   profileCache =
     profile;
@@ -745,14 +913,13 @@ export async function loginUser(
     user.uid
   );
 
-  /*
-   * IMPORTANT:
-   *
-   * Firebase authentication has already succeeded.
-   *
-   * Do not sign out merely because the RTDB profile
-   * has a problem.
-   */
+
+  // ----------------------------------------------------------
+  // Use the concurrency-safe profile function.
+  //
+  // If onAuthStateChanged is already doing this, both calls
+  // share the same profile creation Promise.
+  // ----------------------------------------------------------
 
   try {
 
@@ -808,11 +975,7 @@ export async function loginUser(
 // ============================================================
 // GOOGLE LOGIN
 //
-// IMPORTANT:
-// We intentionally use POPUP here on ALL devices.
-//
-// This avoids forcing mobile Chrome into the
-// signInWithRedirect() flow.
+// POPUP is used on ALL devices.
 //
 // ============================================================
 
@@ -826,6 +989,7 @@ export async function loginWithGoogle() {
   provider.setCustomParameters({
     prompt: "select_account"
   });
+
 
   console.log(
     "SURE: Starting Google popup login..."
@@ -841,6 +1005,7 @@ export async function loginWithGoogle() {
     isMobile()
   );
 
+
   try {
 
     const credential =
@@ -852,6 +1017,7 @@ export async function loginWithGoogle() {
     const user =
       credential.user;
 
+
     console.log(
       "SURE: Google popup authenticated:",
       user.uid
@@ -862,8 +1028,20 @@ export async function loginWithGoogle() {
       user.email
     );
 
+
+    // --------------------------------------------------------
+    // IMPORTANT:
+    //
+    // This uses the concurrency-safe profile function.
+    //
+    // onAuthStateChanged() may also be calling it.
+    //
+    // Both calls will share ONE profile creation operation.
+    // --------------------------------------------------------
+
     const profile =
       await ensureUserProfile(user);
+
 
     if (!profile) {
 
@@ -873,10 +1051,12 @@ export async function loginWithGoogle() {
 
     }
 
+
     console.log(
       "SURE: Google profile ready:",
       profile.uid
     );
+
 
     if (
       await handleSuspendedAccount(profile)
@@ -888,6 +1068,7 @@ export async function loginWithGoogle() {
 
     }
 
+
     profileCache =
       profile;
 
@@ -896,9 +1077,11 @@ export async function loginWithGoogle() {
         user.uid
       );
 
+
     console.log(
       "SURE: Google login completed successfully."
     );
+
 
     return profile;
 
@@ -919,9 +1102,11 @@ export async function loginWithGoogle() {
       error?.message || "NO_MESSAGE"
     );
 
+
     showAuthError(
       getAuthErrorMessage(error)
     );
+
 
     throw error;
 
@@ -981,10 +1166,12 @@ export async function requireAuth(
   const user =
     await whenAuthReady();
 
+
   console.log(
     "SURE requireAuth:",
     user?.uid || "NO USER"
   );
+
 
   /*
    * This is the ONLY initial login check.
@@ -1007,6 +1194,7 @@ export async function requireAuth(
 
   }
 
+
   /*
    * Firebase says the user is authenticated.
    *
@@ -1015,6 +1203,7 @@ export async function requireAuth(
 
   let profile =
     profileCache;
+
 
   if (
     !profile ||
@@ -1028,6 +1217,7 @@ export async function requireAuth(
 
   }
 
+
   if (!profile) {
 
     throw new Error(
@@ -1035,6 +1225,7 @@ export async function requireAuth(
     );
 
   }
+
 
   if (
     await handleSuspendedAccount(profile)
@@ -1046,6 +1237,7 @@ export async function requireAuth(
 
   }
 
+
   profileCache =
     profile;
 
@@ -1053,6 +1245,7 @@ export async function requireAuth(
     await checkIsAdmin(
       user.uid
     );
+
 
   return profile;
 
@@ -1075,6 +1268,7 @@ export async function requireAdmin() {
       profile.uid
     );
 
+
   if (!isAdmin) {
 
     location.href =
@@ -1088,8 +1282,10 @@ export async function requireAdmin() {
 
   }
 
+
   adminCache =
     true;
+
 
   return profile;
 
@@ -1107,28 +1303,34 @@ async function handleEntryPage() {
     const user =
       await whenAuthReady();
 
+
     if (!user) {
       return;
     }
 
+
     const pathname =
       location.pathname;
+
 
     const isLoginPage =
       /\/login\.html$/i.test(
         pathname
       );
 
+
     const isRegisterPage =
       /\/register\.html$/i.test(
         pathname
       );
+
 
     const isRootPage =
       pathname === "/sure/" ||
       pathname.endsWith(
         "/sure/index.html"
       );
+
 
     if (
       !isLoginPage &&
@@ -1140,8 +1342,10 @@ async function handleEntryPage() {
 
     }
 
+
     let profile =
       profileCache;
+
 
     if (!profile) {
 
@@ -1155,14 +1359,17 @@ async function handleEntryPage() {
 
     }
 
+
     if (!profile) {
       return;
     }
+
 
     adminCache =
       await checkIsAdmin(
         user.uid
       );
+
 
     console.log(
       "SURE: Entry redirect:",
@@ -1170,6 +1377,7 @@ async function handleEntryPage() {
         ? "ADMIN"
         : "USER"
     );
+
 
     location.href =
       adminCache
@@ -1180,12 +1388,14 @@ async function handleEntryPage() {
             "dashboard.html"
           );
 
+
   } catch (error) {
 
     console.error(
       "SURE: Entry redirect failed:",
       error
     );
+
 
     /*
      * Do NOT redirect to login here.
@@ -1210,23 +1420,37 @@ handleEntryPage();
 window.SURE_AUTH_DEBUG = {
 
   user() {
+
     return auth.currentUser;
+
   },
+
 
   profile() {
+
     return profileCache;
+
   },
+
 
   isAdmin() {
+
     return adminCache;
+
   },
+
 
   ready() {
+
     return authInitialized;
+
   },
 
+
   error() {
+
     return authInitializationError;
+
   }
 
 };
